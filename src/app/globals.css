@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Tame Leaflet z-index so controls outside the map remain interactive */
+.leaflet-container { z-index: 0 !important; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
