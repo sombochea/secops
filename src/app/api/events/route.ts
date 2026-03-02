@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { securityEvent } from "@/db/schema";
 import { auth } from "@/lib/auth";
-import { desc, sql, eq, and, gte, ilike, isNull } from "drizzle-orm";
+import { desc, sql, eq, and, gte, ilike } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -15,10 +15,11 @@ export async function GET(req: NextRequest) {
   }
 
   const orgId = session.session.activeOrganizationId;
-  // Scope: if user has an active org, show that org's events. Otherwise show unscoped events.
-  const orgCondition = orgId
-    ? eq(securityEvent.organizationId, orgId)
-    : isNull(securityEvent.organizationId);
+  if (!orgId) {
+    return NextResponse.json({ error: "No active organization" }, { status: 400 });
+  }
+
+  const orgCondition = eq(securityEvent.organizationId, orgId);
 
   const url = req.nextUrl;
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
@@ -45,10 +46,7 @@ export async function GET(req: NextRequest) {
   if (since) conditions.push(gte(securityEvent.timestamp, new Date(since)));
 
   const where = and(...conditions);
-
-  const orgFilter = orgId
-    ? sql.raw(`e.organization_id = '${orgId}'`)
-    : sql.raw(`e.organization_id is null`);
+  const orgFilter = sql.raw(`e.organization_id = '${orgId}'`);
 
   const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, timeline, riskSources] =
     await Promise.all([

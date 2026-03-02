@@ -9,20 +9,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing x-webhook-secret header" }, { status: 401 });
   }
 
-  // Check org-specific webhook key first, fall back to global env secret
-  let orgId: string | null = null;
   const [wk] = await db.select().from(webhookKey).where(eq(webhookKey.key, secret)).limit(1);
-  if (wk) {
-    orgId = wk.organizationId;
-  } else if (secret !== process.env.WEBHOOK_SECRET) {
-    return NextResponse.json({ error: "Invalid webhook secret" }, { status: 401 });
+  if (!wk) {
+    return NextResponse.json({ error: "Invalid webhook secret. Create a webhook key in Settings → Webhook Keys." }, { status: 401 });
   }
 
   const body = await req.json();
   const events = Array.isArray(body) ? body : [body];
 
   const rows = events.map((e: Record<string, unknown>) => ({
-    organizationId: orgId,
+    organizationId: wk.organizationId,
     event: e.event as string,
     status: (e.status as string) ?? null,
     authMethod: (e.auth_method as string) ?? null,
@@ -39,5 +35,5 @@ export async function POST(req: NextRequest) {
 
   const inserted = await db.insert(securityEvent).values(rows).returning({ id: securityEvent.id });
 
-  return NextResponse.json({ received: inserted.length, organizationId: orgId });
+  return NextResponse.json({ received: inserted.length, organizationId: wk.organizationId });
 }

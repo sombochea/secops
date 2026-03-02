@@ -68,16 +68,23 @@ Open [http://localhost:3000](http://localhost:3000) and register your first acco
 | `DATABASE_URL`       | PostgreSQL connection string               |
 | `BETTER_AUTH_SECRET` | Secret key for session encryption          |
 | `BETTER_AUTH_URL`    | Base URL of the application                |
-| `WEBHOOK_SECRET`     | Secret for authenticating webhook requests |
+
+## Getting Started Flow
+
+1. Register at `/register`
+2. The setup wizard guides you to create an organization
+3. A webhook key is generated for your org
+4. Use the key to send events from your servers
+5. Dashboard shows events scoped to your active organization
 
 ## Webhook API
 
-Send security events to `POST /api/webhook` with the following format:
+Webhook keys are created per-organization in **Settings → Webhook Keys**. Send security events to `POST /api/webhook` with the following format:
 
 ```bash
 curl -X POST http://localhost:3000/api/webhook \
   -H "Content-Type: application/json" \
-  -H "x-webhook-secret: your-webhook-secret-here" \
+  -H "x-webhook-secret: whk_your_org_webhook_key" \
   -d '{
     "event": "ssh_attempt",
     "status": "failed",
@@ -122,39 +129,6 @@ bun run db:generate  # Generate Drizzle migrations
 bun run db:migrate   # Run migrations
 bun run db:push      # Push schema directly to database
 bun run db:studio    # Open Drizzle Studio
-```
-
-## Project Structure
-
-```
-src/
-├── app/
-│   ├── (auth)/login/          # Login page
-│   ├── (auth)/register/       # Registration page
-│   ├── (dashboard)/           # Main dashboard (auth-protected)
-│   └── api/
-│       ├── auth/[...all]/     # Better Auth handler
-│       ├── events/            # Events API (filtered, paginated, aggregated)
-│       └── webhook/           # Webhook ingestion endpoint
-├── components/
-│   ├── activity-timeline.tsx  # 14-day event activity area chart
-│   ├── dashboard.tsx          # Main dashboard orchestrator
-│   ├── dashboard-header.tsx   # Header with user menu and about dialog
-│   ├── event-charts.tsx       # Pie + bar charts with click-to-filter
-│   ├── event-detail-sheet.tsx # Slide-out event detail panel
-│   ├── event-filters.tsx      # Search, filters, active filter badges
-│   ├── events-table.tsx       # Paginated event table with status icons
-│   ├── risk-sources.tsx       # Top threat IPs with fail2ban/iptables copy
-│   └── stats-cards.tsx        # Summary stat cards
-├── db/
-│   ├── schema.ts              # Drizzle schema
-│   └── index.ts               # Database connection
-└── lib/
-    ├── auth.ts                # Better Auth server config
-    ├── auth-client.ts         # Better Auth React client
-    ├── proxy.ts               # Server-side auth guard
-    ├── types.ts               # Shared TypeScript types
-    └── utils.ts               # Utility functions
 ```
 
 ## License

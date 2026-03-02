@@ -115,7 +115,9 @@ export const securityEvent = pgTable(
   "security_event",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: text("organization_id").references(() => organization.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
     event: text("event").notNull(),
     status: text("status"),
     authMethod: text("auth_method"),
