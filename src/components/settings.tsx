@@ -10,6 +10,7 @@ import { WhitelistManager } from "@/components/whitelist-manager";
 import { TimezoneSettings } from "@/components/timezone-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, Users, Key, ShieldCheck, UserCircle } from "lucide-react";
+import { BUILD_INFO } from "@/lib/build-info";
 
 export function SettingsPage({ userName }: { userName: string }) {
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -60,7 +61,7 @@ export function SettingsPage({ userName }: { userName: string }) {
       </main>
       <footer className="border-t py-4">
         <p className="text-center text-xs text-muted-foreground">
-          Built by{" "}
+          SecOps {BUILD_INFO.versionLabel} · Built by{" "}
           <button className="text-primary hover:underline" onClick={() => setAboutOpen(true)}>
             Sambo Chea
           </button>

@@ -15,6 +15,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { BUILD_INFO } from "@/lib/build-info";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -37,7 +38,7 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
             </div>
             <span className="font-semibold hidden sm:inline">SecOps</span>
             <Badge variant="outline" className="text-[9px] px-1.5 py-0 hidden sm:inline-flex border-yellow-500/50 text-yellow-500">
-              Alpha
+              {BUILD_INFO.versionLabel}
             </Badge>
           </Link>
           <nav className="flex items-center">

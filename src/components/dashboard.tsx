@@ -11,6 +11,7 @@ import { EventDetailSheet } from "@/components/event-detail-sheet";
 import { ActivityTimeline, rangeToParams, type TimelineRangeValue } from "@/components/activity-timeline";
 import { RiskSources } from "@/components/risk-sources";
 import { AboutDialog } from "@/components/about-dialog";
+import { BUILD_INFO } from "@/lib/build-info";
 import type { SecurityEvent } from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -104,7 +105,7 @@ export function Dashboard({ userName }: { userName: string }) {
       </main>
       <footer className="border-t py-4">
         <p className="text-center text-xs text-muted-foreground">
-          Built by{" "}
+          SecOps {BUILD_INFO.versionLabel} · Built by{" "}
           <button className="text-primary hover:underline" onClick={() => setAboutOpen(true)}>
             Sambo Chea
           </button>

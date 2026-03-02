@@ -5,8 +5,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shield, ExternalLink } from "lucide-react";
+import { Shield, ExternalLink, GitCommitHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BUILD_INFO } from "@/lib/build-info";
 
 interface Props {
   open: boolean;
@@ -22,7 +23,7 @@ export function AboutDialog({ open, onOpenChange }: Props) {
             <Shield className="h-5 w-5" />
             SecOps Center
             <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-yellow-500/50 text-yellow-500">
-              v0.1.0-alpha
+              {BUILD_INFO.versionLabel}-alpha
             </Badge>
           </DialogTitle>
           <DialogDescription>Security Operations Center Dashboard</DialogDescription>
@@ -36,8 +37,22 @@ export function AboutDialog({ open, onOpenChange }: Props) {
           <div className="rounded-lg border p-3 space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Version</span>
-              <span>0.1.0-alpha</span>
+              <span>{BUILD_INFO.versionLabel}</span>
             </div>
+            {BUILD_INFO.commit && (
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Commit</span>
+                <a
+                  href={BUILD_INFO.commitUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
+                >
+                  <GitCommitHorizontal className="h-3 w-3" />
+                  {BUILD_INFO.commit}
+                </a>
+              </div>
+            )}
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Built by</span>
               <a href="https://github.com/sombochea" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
@@ -46,7 +61,7 @@ export function AboutDialog({ open, onOpenChange }: Props) {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Source</span>
-              <a href="https://github.com/sombochea/secops" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <a href={BUILD_INFO.repo} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                 sombochea/secops <ExternalLink className="h-3 w-3" />
               </a>
             </div>
