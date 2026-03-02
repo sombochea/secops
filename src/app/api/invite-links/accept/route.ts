@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         error: "Name and password required for new account",
         needsSignup: true,
+        email: link.email || undefined,
       }, { status: 400 });
     }
 

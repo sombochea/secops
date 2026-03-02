@@ -20,6 +20,7 @@ export default function InvitePage() {
   const [orgName, setOrgName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [emailLocked, setEmailLocked] = useState(false);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -38,6 +39,7 @@ export default function InvitePage() {
           setOrgName(d.organizationName ?? "");
           setStep("success");
         } else if (d.needsSignup) {
+          if (d.email) { setEmail(d.email); setEmailLocked(true); }
           setStep("signup");
         } else if (d.needsLogin) {
           setStep("login");
@@ -95,7 +97,7 @@ export default function InvitePage() {
                 Create an account to join the organization.
               </p>
               <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
-              <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required readOnly={emailLocked} className={emailLocked ? "bg-muted" : ""} />
               <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
               {error && <p className="text-sm text-destructive">{error}</p>}
               <Button type="submit" className="w-full" disabled={submitting}>
