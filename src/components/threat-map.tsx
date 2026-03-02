@@ -49,6 +49,7 @@ function MapInner({ points }: { points: GeoPoint[] }) {
       scrollWheelZoom={true}
       className="h-[350px] w-full rounded-lg z-0"
       style={{ background: "hsl(222.2 84% 4.9%)" }}
+      zoomControl={false}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
