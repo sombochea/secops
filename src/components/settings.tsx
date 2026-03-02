@@ -6,8 +6,9 @@ import { AboutDialog } from "@/components/about-dialog";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { OrgMembers } from "@/components/org-members";
 import { OrgWebhookKeys } from "@/components/org-webhook-keys";
+import { WhitelistManager } from "@/components/whitelist-manager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, Users, Key } from "lucide-react";
+import { Building2, Users, Key, ShieldCheck } from "lucide-react";
 
 export function SettingsPage({ userName }: { userName: string }) {
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -30,6 +31,10 @@ export function SettingsPage({ userName }: { userName: string }) {
               <Key className="h-3.5 w-3.5" />
               Webhook Keys
             </TabsTrigger>
+            <TabsTrigger value="whitelist" className="gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              IP Whitelist
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="organization">
             <OrgSwitcher />
@@ -39,6 +44,9 @@ export function SettingsPage({ userName }: { userName: string }) {
           </TabsContent>
           <TabsContent value="webhooks">
             <OrgWebhookKeys />
+          </TabsContent>
+          <TabsContent value="whitelist">
+            <WhitelistManager />
           </TabsContent>
         </Tabs>
       </main>

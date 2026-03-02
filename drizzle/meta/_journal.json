@@ -15,6 +15,13 @@
       "when": 1772444265343,
       "tag": "0001_amusing_jocasta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772445005151,
+      "tag": "0002_zippy_magneto",
+      "breakpoints": true
     }
   ]
 }

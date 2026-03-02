@@ -23,6 +23,7 @@ import {
   Key,
   Monitor,
   Hash,
+  Gauge,
 } from "lucide-react";
 import type { SecurityEvent } from "@/lib/types";
 
@@ -78,6 +79,9 @@ export function EventDetailSheet({ event, onClose }: Props) {
                 {isThreat(event) && (
                   <Badge variant="destructive" className="text-[10px] ml-auto">THREAT</Badge>
                 )}
+                {event.status === "suspicious" && (
+                  <Badge variant="secondary" className="text-[10px] bg-yellow-500/15 text-yellow-500">SUSPICIOUS</Badge>
+                )}
               </div>
               <SheetDescription className="flex items-center gap-1.5">
                 <Clock className="h-3 w-3" />
@@ -117,6 +121,23 @@ export function EventDetailSheet({ event, onClose }: Props) {
                 <StatusIcon status={event.status} />
                 <span className="text-sm">{event.status || "—"}</span>
               </div>
+              {event.riskScore != null && event.riskScore > 0 && (
+                <div className="flex items-start gap-3 py-3">
+                  <Gauge className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground mb-0.5">Risk Score</p>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 flex-1 max-w-[120px] rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${event.riskScore >= 60 ? "bg-red-500" : event.riskScore >= 30 ? "bg-yellow-500" : "bg-emerald-500"}`}
+                          style={{ width: `${event.riskScore}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-mono font-medium">{event.riskScore}/100</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-5 pb-1">
                 Identifiers

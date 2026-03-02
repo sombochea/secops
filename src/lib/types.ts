@@ -12,6 +12,7 @@ export interface SecurityEvent {
   tty: string | null;
   pamType: string | null;
   metadata: unknown;
+  riskScore: number | null;
   timestamp: string;
   receivedAt: string;
 }
