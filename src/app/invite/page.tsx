@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,18 @@ import { ShieldCheck, Loader2, CheckCircle2, XCircle } from "lucide-react";
 type Step = "loading" | "signup" | "login" | "success" | "error";
 
 export default function InvitePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <InviteContent />
+    </Suspense>
+  );
+}
+
+function InviteContent() {
   const params = useSearchParams();
   const router = useRouter();
   const token = params.get("token") ?? "";
