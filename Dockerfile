@@ -28,6 +28,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# psql for migrations, wget for healthcheck
+RUN apk add --no-cache postgresql-client wget
+
 # Security: non-root user
 RUN addgroup --system --gid 1001 secops && \
     adduser --system --uid 1001 secops
@@ -37,7 +40,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=secops:secops /app/.next/standalone ./
 COPY --from=builder --chown=secops:secops /app/.next/static ./.next/static
 COPY --from=builder --chown=secops:secops /app/drizzle ./drizzle
-COPY --from=builder --chown=secops:secops /app/drizzle.config.ts ./
 
 # Drop privileges
 USER secops

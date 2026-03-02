@@ -11,7 +11,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:migrate:prod": "NODE_ENV=production bun ./drizzle/migrate.ts"
+    "db:migrate:prod": "sh ./drizzle/migrate.sh"
   },
   "dependencies": {
     "better-auth": "^1.5.0",
