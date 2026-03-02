@@ -4,16 +4,28 @@ A lightweight Go agent that monitors log files on your servers and sends securit
 
 ## Supported Log Formats
 
-| Format     | Description                | Auto-detected patterns                    |
-| ---------- | -------------------------- | ----------------------------------------- |
-| `syslog`   | Standard syslog / auth.log | SSH failed/accepted, invalid user, PAM    |
-| `nginx`    | Nginx combined access log  | HTTP method, status, IP, user agent       |
-| `postgres` | PostgreSQL server log      | Auth failures, connections                |
-| `mysql`    | MySQL error/general log    | Access denied, connections                |
-| `json`     | One JSON object per line   | Maps `event`, `status`, `user`, `ip`, etc |
-| `csv`      | CSV with header row        | Maps columns by header name               |
+| Format     | Description                          | Auto-detected patterns                    |
+| ---------- | ------------------------------------ | ----------------------------------------- |
+| `syslog`   | Standard syslog / auth.log           | SSH failed/accepted, invalid user, PAM    |
+| `nginx`    | Nginx combined access log            | HTTP method, status, IP, user agent       |
+| `postgres` | PostgreSQL server log                | Auth failures, connections                |
+| `mysql`    | MySQL error/general log              | Access denied, connections                |
+| `json`     | One JSON object per line             | Maps `event`, `status`, `user`, `ip`, etc |
+| `csv`      | CSV with header row                  | Maps columns by header name               |
+| `custom`   | User-defined regex with named groups | Configurable field mapping                |
 
 ## Install
+
+### Download binary
+
+```bash
+# Linux amd64
+curl -fsSL https://github.com/sombochea/secops/releases/latest/download/secops-agent-linux-amd64 \
+  -o /usr/local/bin/secops-agent
+chmod +x /usr/local/bin/secops-agent
+```
+
+Binaries available for: linux/amd64, linux/arm64, linux/arm, darwin/amd64, darwin/arm64, windows/amd64, freebsd/amd64.
 
 ### From source
 
@@ -36,24 +48,42 @@ docker run -v /etc/secops-agent:/etc/secops-agent \
 
 ```bash
 sudo mkdir -p /etc/secops-agent
-sudo cp config.example.yaml /etc/secops-agent/config.yaml
+sudo cp agent/config.example.yaml /etc/secops-agent/config.yaml
 # Edit with your endpoint and webhook key
 ```
 
 See [config.example.yaml](config.example.yaml) for all options.
 
+### Custom Format Parser
+
+For log formats not covered by built-in parsers, use `format: custom` with a regex pattern using named capture groups:
+
+```yaml
+sources:
+    - path: /var/log/firewall.log
+      format: custom
+      format_parser:
+          pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>ALLOW|DENY) (?P<src>[\d.]+)'
+          event: 'firewall_{{action}}' # static string or {{group_name}}
+          mapping:
+              timestamp: ts
+              source_ip: src
+              status: action
+```
+
+Standard fields: `status`, `user`, `source_ip`, `service`, `auth_method`, `timestamp`, `ua`, `ruser`, `tty`, `pam_type`. Unmapped fields go to `metadata`.
+
 ## Run
 
 ```bash
+# Version info
+secops-agent -version
+
 # Foreground
 secops-agent -config /etc/secops-agent/config.yaml
-
-# Systemd service
-sudo cp secops-agent.service /etc/systemd/system/
-sudo systemctl enable --now secops-agent
 ```
 
-## Systemd Service
+### Systemd Service
 
 ```ini
 [Unit]
@@ -69,6 +99,16 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+## Auto-Update
+
+Enable in config to check GitHub releases on startup:
+
+```yaml
+auto_update: true
+```
+
+The agent checks for `agent-v*` tags on the configured repo, downloads the matching binary for your OS/arch, and atomically replaces itself. Restart the agent (or let systemd do it) to run the new version.
+
 ## How It Works
 
 1. Tails each configured log file from the current end (like `tail -f`)
@@ -76,6 +116,16 @@ WantedBy=multi-user.target
 3. Batches events (default: 50 events or every 5 seconds)
 4. Sends batches to `POST /api/webhook` with the configured webhook key
 5. Handles log rotation automatically (detects file recreate)
+
+## Release
+
+```bash
+# Tag a new agent release
+git tag agent-v1.0.0
+git push origin agent-v1.0.0
+```
+
+GitHub Actions builds binaries for all platforms and creates a release.
 
 ## License
 

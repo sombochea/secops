@@ -5,13 +5,12 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-// Tail watches a file and sends new lines to the channel.
-// Starts from the end of the file (like tail -f).
 func Tail(path string, lines chan<- string, done <-chan struct{}) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -20,26 +19,28 @@ func Tail(path string, lines chan<- string, done <-chan struct{}) {
 	}
 	defer f.Close()
 
-	// Seek to end
 	f.Seek(0, io.SeekEnd)
+	reader := bufio.NewReader(f)
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Printf("[tailer] fsnotify error: %v", err)
-		// Fallback to polling
-		pollTail(f, lines, done)
+		log.Printf("[tailer] fsnotify error: %v, using poll", err)
+		pollTail(reader, lines, done)
 		return
 	}
 	defer watcher.Close()
 
 	if err := watcher.Add(path); err != nil {
-		log.Printf("[tailer] watch error for %s: %v, falling back to poll", path, err)
-		pollTail(f, lines, done)
+		log.Printf("[tailer] watch error for %s: %v, using poll", path, err)
+		pollTail(reader, lines, done)
 		return
 	}
 
-	reader := bufio.NewReader(f)
 	log.Printf("[tailer] watching %s", path)
+
+	// Hybrid: fsnotify + poll every 2s (macOS kqueue can miss appends)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -53,7 +54,7 @@ func Tail(path string, lines chan<- string, done <-chan struct{}) {
 				readLines(reader, lines)
 			}
 			if ev.Op&fsnotify.Create != 0 {
-				// File was rotated — reopen
+				// Log rotation — reopen
 				f.Close()
 				time.Sleep(100 * time.Millisecond)
 				f2, err := os.Open(path)
@@ -69,12 +70,13 @@ func Tail(path string, lines chan<- string, done <-chan struct{}) {
 				return
 			}
 			log.Printf("[tailer] watch error: %v", err)
+		case <-ticker.C:
+			readLines(reader, lines)
 		}
 	}
 }
 
-func pollTail(f *os.File, lines chan<- string, done <-chan struct{}) {
-	reader := bufio.NewReader(f)
+func pollTail(reader *bufio.Reader, lines chan<- string, done <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -90,14 +92,9 @@ func pollTail(f *os.File, lines chan<- string, done <-chan struct{}) {
 func readLines(r *bufio.Reader, lines chan<- string) {
 	for {
 		line, err := r.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
 		if len(line) > 0 {
-			// Trim trailing newline
-			if line[len(line)-1] == '\n' {
-				line = line[:len(line)-1]
-			}
-			if len(line) > 0 {
-				lines <- line
-			}
+			lines <- line
 		}
 		if err != nil {
 			return

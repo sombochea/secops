@@ -1,0 +1,113 @@
+name: Agent — Build & Release
+
+on:
+  push:
+    tags: ["agent-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: freebsd
+            goarch: amd64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build
+        working-directory: agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME#agent-v}"
+          COMMIT="${GITHUB_SHA::8}"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
+          OUTNAME="secops-agent-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}"
+          go build -ldflags="-s -w \
+            -X github.com/sombochea/secops/agent/internal/version.Version=${VERSION} \
+            -X github.com/sombochea/secops/agent/internal/version.Commit=${COMMIT} \
+            -X github.com/sombochea/secops/agent/internal/version.BuildDate=${BUILD_DATE}" \
+            -o "../${OUTNAME}" ./cmd
+          echo "artifact=${OUTNAME}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: secops-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum secops-agent-* > checksums.txt
+          cat checksums.txt
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^agent-v' | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "${{ github.ref_name }}" ]; then
+            echo "body=Initial agent release" >> "$GITHUB_OUTPUT"
+          else
+            LOG=$(git log "$PREV_TAG".."${{ github.ref_name }}" --pretty=format:"- %s (%h)" --no-merges -- agent/)
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "body<<$EOF" >> "$GITHUB_OUTPUT"
+            echo "## SecOps Agent ${GITHUB_REF_NAME#agent-v}" >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+            echo "### Changes" >> "$GITHUB_OUTPUT"
+            echo "$LOG" >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+            echo "### Install" >> "$GITHUB_OUTPUT"
+            echo '```bash' >> "$GITHUB_OUTPUT"
+            echo "curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/secops-agent-linux-amd64 -o /usr/local/bin/secops-agent" >> "$GITHUB_OUTPUT"
+            echo "chmod +x /usr/local/bin/secops-agent" >> "$GITHUB_OUTPUT"
+            echo '```' >> "$GITHUB_OUTPUT"
+            echo "$EOF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "SecOps Agent ${{ github.ref_name }}"
+          body: ${{ steps.changelog.outputs.body }}
+          files: artifacts/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}

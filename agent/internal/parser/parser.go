@@ -104,6 +104,8 @@ func ParseSyslog(line, host string) *Event {
 
 // --- JSON ---
 func ParseJSON(line, host string) *Event {
+	line = strings.TrimSpace(line)
+	line = strings.TrimRight(line, ",")
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return nil
@@ -289,4 +291,68 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// --- Custom (regex with named groups) ---
+
+func ParseCustom(line, host string, pattern *regexp.Regexp, eventName string, mapping map[string]string) *Event {
+	m := pattern.FindStringSubmatch(line)
+	if m == nil {
+		return nil
+	}
+	groups := make(map[string]string)
+	for i, name := range pattern.SubexpNames() {
+		if i > 0 && name != "" {
+			groups[name] = m[i]
+		}
+	}
+
+	ev := &Event{Host: host, Timestamp: time.Now().UTC().Format(time.RFC3339)}
+
+	// Resolve event name: static or "{{group}}"
+	if strings.HasPrefix(eventName, "{{") && strings.HasSuffix(eventName, "}}") {
+		key := strings.TrimSuffix(strings.TrimPrefix(eventName, "{{"), "}}")
+		if v, ok := groups[key]; ok {
+			ev.Event = v
+		}
+	}
+	if ev.Event == "" {
+		ev.Event = eventName
+	}
+
+	// Map fields from named groups
+	for field, group := range mapping {
+		v, ok := groups[group]
+		if !ok || v == "" {
+			continue
+		}
+		switch field {
+		case "status":
+			ev.Status = v
+		case "user":
+			ev.User = v
+		case "source_ip":
+			ev.SourceIP = v
+		case "service":
+			ev.Service = v
+		case "auth_method":
+			ev.AuthMethod = v
+		case "timestamp":
+			ev.Timestamp = v
+		case "ua":
+			ev.UA = v
+		case "ruser":
+			ev.Ruser = v
+		case "tty":
+			ev.Tty = v
+		case "pam_type":
+			ev.PamType = v
+		default:
+			if ev.Metadata == nil {
+				ev.Metadata = make(map[string]string)
+			}
+			ev.Metadata[field] = v
+		}
+	}
+	return ev
 }

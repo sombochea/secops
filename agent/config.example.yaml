@@ -2,45 +2,75 @@
 # Place at /etc/secops-agent/config.yaml
 
 # SOC dashboard endpoint
-endpoint: 'https://secops.ctdn.dev/api/webhook'
+endpoint: "https://secops.example.com/api/webhook"
 
 # Webhook key from Settings → Webhook Keys
-webhook_key: 'whk_your_key_here'
+webhook_key: "whk_your_key_here"
 
 # Override auto-detected hostname (optional)
 # hostname: "prod-server-01"
 
 # Batching: send events in groups
-batch_size: 50 # max events per request
-flush_sec: 5 # flush interval in seconds
+batch_size: 50   # max events per request
+flush_sec: 5     # flush interval in seconds
+
+# Auto-update: check GitHub releases for new agent versions on startup
+auto_update: true
+# update_repo: "sombochea/secops"  # default repo to check
 
 # Log sources to monitor
 sources:
-    # SSH / PAM auth logs (syslog format)
-    - path: /var/log/auth.log # Debian/Ubuntu
-      format: syslog
-    # - path: /var/log/secure         # RHEL/CentOS
+  # --- Syslog (SSH / PAM auth logs) ---
+  - path: /var/log/auth.log        # Debian/Ubuntu
+    format: syslog
+  # - path: /var/log/secure         # RHEL/CentOS
+  #   format: syslog
 
-    # Nginx access log
-    - path: /var/log/nginx/access.log
-      format: nginx
-      tags:
-          environment: production
+  # --- Nginx access log (combined format) ---
+  - path: /var/log/nginx/access.log
+    format: nginx
+    tags:
+      environment: production
 
-    # PostgreSQL log
-    - path: /var/log/postgresql/postgresql-16-main.log
-      format: postgres
+  # --- PostgreSQL server log ---
+  - path: /var/log/postgresql/postgresql-16-main.log
+    format: postgres
 
-    # MySQL error log
-    - path: /var/log/mysql/error.log
-      format: mysql
+  # --- MySQL error/general log ---
+  - path: /var/log/mysql/error.log
+    format: mysql
 
-    # Application JSON logs (one JSON object per line)
-    - path: /var/log/myapp/events.jsonl
-      format: json
-      tags:
-          service: myapp
+  # --- JSON logs (one JSON object per line) ---
+  # Auto-maps: event/type/action, status, user, source_ip/ip, service, host, timestamp, ua
+  - path: /var/log/myapp/events.jsonl
+    format: json
+    tags:
+      service: myapp
 
-    # CSV log (first line must be headers)
-    # - path: /var/log/audit/events.csv
-    #   format: csv
+  # --- CSV log (first line must be column headers) ---
+  # Recognized headers: event, status, user, source_ip, host, service, timestamp, auth_method
+  # - path: /var/log/audit/events.csv
+  #   format: csv
+
+  # --- Custom format (regex with named capture groups) ---
+  # Use Go regex syntax. Named groups are mapped to event fields via the mapping section.
+  # Any mapped field not in the standard set becomes metadata.
+  #
+  # Example: parsing a custom firewall log like:
+  #   2024-01-15 10:30:00 DENY 203.0.113.42 -> 10.0.0.1:22 proto=tcp
+  #
+  # - path: /var/log/firewall.log
+  #   format: custom
+  #   format_parser:
+  #     pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>ALLOW|DENY) (?P<src>[\d.]+) -> (?P<dst>[\d.:]+) proto=(?P<proto>\w+)'
+  #     event: "firewall_{{action}}"
+  #     mapping:
+  #       timestamp: ts
+  #       source_ip: src
+  #       status: action          # DENY -> status field
+  #       destination: dst        # not a standard field -> goes to metadata
+  #       protocol: proto         # not a standard field -> goes to metadata
+  #
+  # Standard fields you can map to:
+  #   status, user, source_ip, service, auth_method, timestamp, ua, ruser, tty, pam_type
+  # Anything else becomes metadata key-value pairs.
