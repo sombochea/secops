@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings } from "lucide-react";
+import { Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings, Building2, Check, ChevronsUpDown } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,13 @@ const NAV_ITEMS = [
 export function DashboardHeader({ userName, onAboutClick }: { userName: string; onAboutClick: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { data: activeOrg } = authClient.useActiveOrganization();
+  const { data: orgs } = authClient.useListOrganizations();
+
+  const handleSwitchOrg = async (orgId: string) => {
+    await authClient.organization.setActive({ organizationId: orgId });
+    window.location.reload();
+  };
 
   return (
     <header className="border-b bg-card">
@@ -66,8 +73,34 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
           </nav>
         </div>
 
-        {/* Right: user menu */}
-        <DropdownMenu>
+        {/* Right: org switcher + user menu */}
+        <div className="flex items-center gap-2">
+          {orgs && orgs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 h-8 max-w-[180px]">
+                  <Building2 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate text-xs">{activeOrg?.name ?? "Select org"}</span>
+                  <ChevronsUpDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[200px]">
+                {orgs.map((org) => (
+                  <DropdownMenuItem
+                    key={org.id}
+                    onClick={() => handleSwitchOrg(org.id)}
+                    className="gap-2"
+                  >
+                    {org.id === activeOrg?.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    {org.id !== activeOrg?.id && <span className="w-3.5" />}
+                    <span className="truncate text-xs">{org.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-2">
               <Avatar className="h-7 w-7">
@@ -94,7 +127,8 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   );
