@@ -89,7 +89,8 @@ function MiniBarChart({
                 dataKey="count"
                 radius={[0, 4, 4, 0]}
                 cursor="pointer"
-                onClick={(d: AggregationItem) => d.name && onSegmentClick(filterKey, d.name)}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                onClick={(d: any) => d.name && onSegmentClick(filterKey, d.name)}
               >
                 {data.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
