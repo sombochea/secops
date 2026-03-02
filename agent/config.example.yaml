@@ -1,0 +1,46 @@
+# SecOps Agent configuration
+# Place at /etc/secops-agent/config.yaml
+
+# SOC dashboard endpoint
+endpoint: 'https://secops.ctdn.dev/api/webhook'
+
+# Webhook key from Settings → Webhook Keys
+webhook_key: 'whk_your_key_here'
+
+# Override auto-detected hostname (optional)
+# hostname: "prod-server-01"
+
+# Batching: send events in groups
+batch_size: 50 # max events per request
+flush_sec: 5 # flush interval in seconds
+
+# Log sources to monitor
+sources:
+    # SSH / PAM auth logs (syslog format)
+    - path: /var/log/auth.log # Debian/Ubuntu
+      format: syslog
+    # - path: /var/log/secure         # RHEL/CentOS
+
+    # Nginx access log
+    - path: /var/log/nginx/access.log
+      format: nginx
+      tags:
+          environment: production
+
+    # PostgreSQL log
+    - path: /var/log/postgresql/postgresql-16-main.log
+      format: postgres
+
+    # MySQL error log
+    - path: /var/log/mysql/error.log
+      format: mysql
+
+    # Application JSON logs (one JSON object per line)
+    - path: /var/log/myapp/events.jsonl
+      format: json
+      tags:
+          service: myapp
+
+    # CSV log (first line must be headers)
+    # - path: /var/log/audit/events.csv
+    #   format: csv

@@ -155,6 +155,23 @@ docker compose up -d --build # or docker compose up -d # if you already built th
 docker compose exec app bun run db:migrate:prod
 ```
 
+## SecOps Agent
+
+A lightweight Go agent that runs on your servers to collect and forward security events. See [agent/README.md](agent/README.md) for full documentation.
+
+```bash
+# Build
+cd agent && go build -o secops-agent ./cmd
+
+# Configure
+cp agent/config.example.yaml /etc/secops-agent/config.yaml
+
+# Run
+secops-agent -config /etc/secops-agent/config.yaml
+```
+
+Supported log formats: `syslog`, `nginx`, `postgres`, `mysql`, `json`, `csv`
+
 ## License
 
 MIT — Free to use and customize.
