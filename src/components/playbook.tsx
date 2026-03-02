@@ -16,8 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SECURITY_TIPS, CATEGORIES, type SecurityTip } from "@/lib/security-tips";
-import { Search, X, BookOpen, ArrowLeft } from "lucide-react";
-import Link from "next/link";
+import { Search, X, ArrowLeft } from "lucide-react";
 
 export function PlaybookPage({ userName }: { userName: string }) {
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -48,22 +47,6 @@ export function PlaybookPage({ userName }: { userName: string }) {
     <div className="min-h-screen bg-background flex flex-col">
       <DashboardHeader userName={userName} onAboutClick={() => setAboutOpen(true)} />
       <main className="mx-auto max-w-7xl w-full flex-1 px-4 py-6 sm:px-6">
-        {/* Back + Title */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Security Playbook</h2>
-          </div>
-          <Badge variant="secondary" className="text-xs ml-auto">
-            {SECURITY_TIPS.length} tips
-          </Badge>
-        </div>
-
         {selectedTip ? (
           <div className="space-y-6">
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setSelectedTip(null)}>

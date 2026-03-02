@@ -10,9 +10,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Shield, LogOut, Info, BookOpen } from "lucide-react";
+import { Shield, LogOut, Info, LayoutDashboard, BookOpen } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+const NAV_ITEMS = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/playbook", label: "Playbook", icon: BookOpen },
+];
 
 export function DashboardHeader({ userName, onAboutClick }: { userName: string; onAboutClick: () => void }) {
   const router = useRouter();
@@ -20,34 +26,44 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
 
   return (
     <header className="border-b bg-card">
-      <div className="mx-auto max-w-7xl flex items-center justify-between px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Shield className="h-5 w-5" />
+      <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6">
+        {/* Left: logo + nav */}
+        <div className="flex items-center gap-6">
+          <Link href="/" className="flex items-center gap-2.5 py-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Shield className="h-4 w-4" />
             </div>
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-semibold leading-none">SecOps Center</h1>
-              <p className="text-xs text-muted-foreground mt-1">Security Operations Dashboard</p>
-            </div>
+            <span className="font-semibold hidden sm:inline">SecOps</span>
           </Link>
-          <nav className="flex items-center gap-1 ml-2">
-            <Link href="/">
-              <Button variant={pathname === "/" ? "secondary" : "ghost"} size="sm" className="text-xs h-8">
-                Dashboard
-              </Button>
-            </Link>
-            <Link href="/playbook">
-              <Button variant={pathname === "/playbook" ? "secondary" : "ghost"} size="sm" className="text-xs h-8 gap-1.5">
-                <BookOpen className="h-3.5 w-3.5" />
-                Playbook
-              </Button>
-            </Link>
+          <nav className="flex items-center">
+            {NAV_ITEMS.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "relative flex items-center gap-1.5 px-3 py-3 text-sm transition-colors",
+                    active
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <item.icon className="h-3.5 w-3.5" />
+                  {item.label}
+                  {active && (
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-primary" />
+                  )}
+                </Link>
+              );
+            })}
           </nav>
         </div>
+
+        {/* Right: user menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2">
+            <Button variant="ghost" size="sm" className="gap-2">
               <Avatar className="h-7 w-7">
                 <AvatarFallback className="text-xs">
                   {userName.charAt(0).toUpperCase()}
