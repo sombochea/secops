@@ -16,6 +16,7 @@ import {
 import { Key, Plus, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { WebhookKeyInfo } from "@/lib/types";
+import { AppConfig } from "@/lib/config";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -175,7 +176,7 @@ export function OrgWebhookKeys() {
         </CardHeader>
         <CardContent>
           <pre className="rounded-lg bg-muted p-4 text-xs font-mono overflow-x-auto leading-relaxed">
-{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/webhook \\
+{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : AppConfig.url}/api/webhook \\
   -H "Content-Type: application/json" \\
   -H "x-webhook-secret: YOUR_WEBHOOK_KEY" \\
   -d '{

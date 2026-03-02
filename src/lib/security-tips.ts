@@ -1,3 +1,5 @@
+import { AppConfig } from "./config";
+
 export interface SecurityTip {
   id: string;
   category: string;
@@ -206,7 +208,7 @@ export const SECURITY_TIPS: SecurityTip[] = [
       },
       {
         label: "Send test event to SecOps",
-        command: `curl -X POST http://localhost:3000/api/webhook \\
+        command: `curl -X POST \`${AppConfig.url}/api/webhook\` \\
   -H "Content-Type: application/json" \\
   -H "x-webhook-secret: your-secret" \\
   -d '{"event":"ssh_attempt","status":"failed","auth_method":"password","host":"test-server","user":"root","source_ip":"203.0.113.42","service":"sshd","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%S+00:00)'"}'`,

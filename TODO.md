@@ -1,6 +1,9 @@
 ### Brainstorming
 
-- Add support organization and team management features to allow multiple users to collaborate on the SOC dashboard with different roles and permissions and a custom webhook endpoint for each team to ingest their own security event data.
+- Add geolocation data to events based on source IP addresses and display this information on the dashboard, including a world map visualization showing the geographic distribution of security events.
+- Implement a correlation engine that can identify related events across different sources and timeframes, helping analysts to piece together attack patterns and identify potential breaches more effectively.
+- Add support for custom event types and fields, allowing users to tailor the dashboard to their specific security monitoring needs and integrate with a wider range of data sources.
+- [x] Add support organization and team management features to allow multiple users to collaborate on the SOC dashboard with different roles and permissions and a custom webhook endpoint for each team to ingest their own security event data.
 - Add prometheus metrics and Grafana dashboard for monitoring the performance and health of the SOC dashboard itself.
 - Expose prometheus metrics endpoint for external monitoring tools to scrape and visualize the performance of the SOC dashboard and design a Grafana dashboard to display these metrics in a user-friendly way.
 - Add machine learning-based anomaly detection to identify unusual patterns in security events.

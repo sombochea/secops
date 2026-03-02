@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Building2, Key, ArrowRight, Check, Copy, Loader2 } from "lucide-react";
+import { AppConfig } from "@/lib/config";
 
 type Step = "org" | "webhook" | "done";
 
@@ -240,7 +241,7 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
               <div className="rounded-lg bg-muted p-3">
                 <p className="text-xs text-muted-foreground mb-2">Send a test event:</p>
                 <pre className="text-[11px] font-mono overflow-x-auto leading-relaxed">
-{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/webhook \\
+{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : AppConfig.url}/api/webhook \\
   -H "Content-Type: application/json" \\
   -H "x-webhook-secret: ${webhookKey}" \\
   -d '{"event":"ssh_attempt","status":"failed",
