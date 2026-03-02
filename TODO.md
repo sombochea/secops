@@ -5,6 +5,8 @@
 - Implement user behavior analytics to identify anomalous activity.
 - Add support for additional event sources (e.g., firewall logs, IDS alerts).
 - Create a mobile app for on-the-go monitoring and incident response.
+- Implement role-based access control (RBAC) to manage user permissions and access to different features of the dashboard.
+- Implement SecOps Agent: A lightweight agent that can be installed on servers to collect security event data and send it to the SOC dashboard in real-time, providing more comprehensive visibility into security events across the infrastructure.
 
 ### Key Features for the SOC Dashboard
 
