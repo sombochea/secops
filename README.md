@@ -55,6 +55,9 @@ cp .env.example .env
 # Push schema to database
 bun run db:push
 
+# Or run existing migrations for production safety
+bun run db:migrate:prod
+
 # Start development server
 bun run dev
 ```
@@ -63,11 +66,12 @@ Open [http://localhost:3000](http://localhost:3000) and register your first acco
 
 ### Environment Variables
 
-| Variable             | Description                                |
-| -------------------- | ------------------------------------------ |
-| `DATABASE_URL`       | PostgreSQL connection string               |
-| `BETTER_AUTH_SECRET` | Secret key for session encryption          |
-| `BETTER_AUTH_URL`    | Base URL of the application                |
+| Variable              | Description                       |
+| --------------------- | --------------------------------- |
+| `DATABASE_URL`        | PostgreSQL connection string      |
+| `BETTER_AUTH_SECRET`  | Secret key for session encryption |
+| `BETTER_AUTH_URL`     | Base URL of the application       |
+| `NEXT_PUBLIC_APP_URL` | Public URL for client-side use    |
 
 ## Getting Started Flow
 
@@ -96,7 +100,11 @@ curl -X POST http://localhost:3000/api/webhook \
     "service": "sshd",
     "tty": "ssh",
     "pam_type": "auth",
-    "timestamp": "2026-03-01T12:00:00+00:00"
+    "timestamp": "2026-03-01T12:00:00+00:00",
+    "metadata": {
+      "attempted_password": "hunter2"
+    },
+    "ua": "Mozilla/5.0 (compatible; SecOpsBot/1.0; +https://github.com/sombochea/secops)"
   }'
 ```
 
@@ -104,31 +112,33 @@ Supports both single events and batch arrays.
 
 ### Event Fields
 
-| Field         | Type              | Description                                                     |
-| ------------- | ----------------- | --------------------------------------------------------------- |
-| `event`       | string (required) | Event type (e.g., `ssh_session_close`, `ssh_attempt`)           |
-| `status`      | string            | Event status (`closed`, `failed`, `success`)                    |
-| `auth_method` | string            | Authentication method (`publickey`, `password`, `invalid_user`) |
-| `host`        | string            | Target hostname                                                 |
-| `user`        | string            | Local username                                                  |
-| `ruser`       | string            | Remote username                                                 |
-| `source_ip`   | string            | Source IP address                                               |
-| `service`     | string            | Service name (e.g., `sshd`)                                     |
-| `tty`         | string            | Terminal type                                                   |
-| `pam_type`    | string            | PAM event type (`open_session`, `close_session`, `auth`)        |
-| `timestamp`   | string (required) | ISO 8601 timestamp                                              |
-| `metadata`    | object            | Additional arbitrary data                                       |
+| Field         | Type              | Description                                                        |
+| ------------- | ----------------- | ------------------------------------------------------------------ |
+| `event`       | string (required) | Event type (e.g., `ssh_session_close`, `ssh_attempt`)              |
+| `status`      | string            | Event status (`closed`, `failed`, `success`)                       |
+| `auth_method` | string            | Authentication method (`publickey`, `password`, `invalid_user`)    |
+| `host`        | string            | Target hostname                                                    |
+| `user`        | string            | Local username                                                     |
+| `ruser`       | string            | Remote username                                                    |
+| `source_ip`   | string            | Source IP address                                                  |
+| `service`     | string            | Service name (e.g., `sshd`)                                        |
+| `tty`         | string            | Terminal type                                                      |
+| `pam_type`    | string            | PAM event type (`open_session`, `close_session`, `auth`)           |
+| `timestamp`   | string (required) | ISO 8601 timestamp                                                 |
+| `ua`          | string            | User agent string (optional, auto-captured if sent from a browser) |
+| `metadata`    | object            | Additional arbitrary data                                          |
 
 ## Scripts
 
 ```bash
-bun run dev          # Start dev server with Turbopack
-bun run build        # Production build
-bun run start        # Start production server
-bun run db:generate  # Generate Drizzle migrations
-bun run db:migrate   # Run migrations
-bun run db:push      # Push schema directly to database
-bun run db:studio    # Open Drizzle Studio
+bun run dev             # Start dev server with Turbopack
+bun run build           # Production build
+bun run start           # Start production server
+bun run db:generate     # Generate Drizzle migrations
+bun run db:migrate      # Run migrations
+bun run db:migrate:prod # Run migrations in production (with safety checks)
+bun run db:push         # Push schema directly to database
+bun run db:studio       # Open Drizzle Studio
 ```
 
 ## Docker Deployment
@@ -136,16 +146,14 @@ bun run db:studio    # Open Drizzle Studio
 ```bash
 # Configure secrets
 cp .env.example .env
-# Edit .env — set BETTER_AUTH_SECRET and optionally DB_PASSWORD
+# Edit .env — set BETTER_AUTH_SECRET and optionally DB_PASSWORD (generate: `openssl rand -hex 32` for a secure random secret)
 
 # Start everything
-docker compose up -d
+docker compose up -d --build # or docker compose up -d # if you already built the image
 
-# Push schema to the database
-docker compose exec app node -e "require('child_process').execSync('npx drizzle-kit push', {stdio:'inherit'})"
+# Run database migrations
+docker compose exec app bun run db:migrate:prod
 ```
-
-The production image is ~120MB (Node Alpine), runs as non-root user `secops`, and includes only the standalone Next.js output.
 
 ## License
 
