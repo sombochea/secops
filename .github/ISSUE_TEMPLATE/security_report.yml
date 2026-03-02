@@ -1,0 +1,48 @@
+name: Security Vulnerability Report
+description: Report a security vulnerability (please use responsibly)
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **For critical vulnerabilities**, please email the maintainer directly instead of opening a public issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Vulnerability summary
+      placeholder: Brief description of the security issue.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      placeholder: What can an attacker do? What data is at risk?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: How to trigger the vulnerability.
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested fix
+      placeholder: If you have a proposed fix or mitigation.
+  - type: input
+    id: version
+    attributes:
+      label: Affected version
+      placeholder: e.g. v0.1.0
