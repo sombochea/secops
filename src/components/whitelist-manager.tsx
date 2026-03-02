@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ShieldCheck, Trash2, Plus } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format-date";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -96,7 +96,7 @@ export function WhitelistManager() {
                       <Badge variant="outline" className="ml-2 text-[10px]">{item.note}</Badge>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Added {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                      Added {formatRelative(item.createdAt)}
                     </p>
                   </div>
                 </div>

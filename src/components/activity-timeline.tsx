@@ -13,11 +13,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { format, parseISO, subDays, subHours, startOfDay, endOfDay } from "date-fns";
+import { format, subDays, subHours, startOfDay, endOfDay } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
 import type { TimelinePoint } from "@/lib/types";
 import type { DateRange as CalendarDateRange } from "react-day-picker";
+import { useTimezone } from "@/lib/timezone-context";
+import { formatTz } from "@/lib/format-date";
 
 export type TimelineRange = "24h" | "7d" | "14d" | "30d" | "custom";
 
@@ -55,23 +57,21 @@ export function rangeToParams(r: TimelineRangeValue): { from?: string; to?: stri
   return { from: fn().toISOString(), to: now.toISOString() };
 }
 
-function formatTick(v: string, range: TimelineRange) {
-  const d = parseISO(v);
-  if (range === "24h") return format(d, "HH:mm");
-  return format(d, "MMM d");
+function formatTick(v: string, range: TimelineRange, tz: string) {
+  if (range === "24h") return formatTz(v, "HH:mm", tz);
+  return formatTz(v, "MMM d", tz);
 }
 
-function formatTooltipLabel(v: string, range: TimelineRange) {
-  const d = parseISO(v);
-  if (range === "24h") return format(d, "MMM d, HH:mm");
-  return format(d, "MMM d, yyyy");
+function formatTooltipLabel(v: string, range: TimelineRange, tz: string) {
+  if (range === "24h") return formatTz(v, "MMM d, HH:mm", tz);
+  return formatTz(v, "MMM d, yyyy", tz);
 }
 
-function CustomTooltip({ active, payload, label, range }: { active?: boolean; payload?: Array<{ value: number; dataKey: string; color: string }>; label?: string; range: TimelineRange }) {
+function CustomTooltip({ active, payload, label, range, tz }: { active?: boolean; payload?: Array<{ value: number; dataKey: string; color: string }>; label?: string; range: TimelineRange; tz: string }) {
   if (!active || !payload?.length || !label) return null;
   return (
     <div className="rounded-lg border bg-popover px-3 py-2.5 text-sm shadow-md space-y-1">
-      <p className="font-medium">{formatTooltipLabel(label, range)}</p>
+      <p className="font-medium">{formatTooltipLabel(label, range, tz)}</p>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
@@ -86,6 +86,7 @@ function CustomTooltip({ active, payload, label, range }: { active?: boolean; pa
 export function ActivityTimeline({ data, loading, range, onRangeChange }: Props) {
   const [calOpen, setCalOpen] = useState(false);
   const [calRange, setCalRange] = useState<CalendarDateRange | undefined>();
+  const { timezone } = useTimezone();
 
   const applyCustomRange = () => {
     if (calRange?.from && calRange?.to) {
@@ -179,10 +180,10 @@ export function ActivityTimeline({ data, loading, range, onRangeChange }: Props)
                 fontSize={11}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v: string) => formatTick(v, range.key)}
+                tickFormatter={(v: string) => formatTick(v, range.key, timezone)}
               />
               <YAxis fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip content={<CustomTooltip range={range.key} />} />
+              <Tooltip content={<CustomTooltip range={range.key} tz={timezone} />} />
               <Area type="monotone" dataKey="total" stroke="hsl(221, 83%, 53%)" strokeWidth={2} fill="url(#gradTotal)" />
               <Area type="monotone" dataKey="threats" stroke="hsl(0, 72%, 51%)" strokeWidth={2} fill="url(#gradThreats)" />
             </AreaChart>

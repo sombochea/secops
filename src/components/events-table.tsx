@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format-date";
 import {
   ChevronLeft,
   ChevronRight,
@@ -172,7 +172,7 @@ export function EventsTable({
                     <TableCell className="font-mono text-xs">{e.sourceIp ?? "—"}</TableCell>
                     <TableCell className="text-sm">{e.service ?? "—"}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDistanceToNow(new Date(e.timestamp), { addSuffix: true })}
+                      {formatRelative(e.timestamp)}
                     </TableCell>
                   </TableRow>
                 ))
@@ -202,7 +202,7 @@ export function EventsTable({
                     </Badge>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {formatDistanceToNow(new Date(e.timestamp), { addSuffix: true })}
+                    {formatRelative(e.timestamp)}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">

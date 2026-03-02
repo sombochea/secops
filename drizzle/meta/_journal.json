@@ -22,6 +22,13 @@
       "when": 1772445005151,
       "tag": "0002_zippy_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772447045363,
+      "tag": "0003_orange_toro",
+      "breakpoints": true
     }
   ]
 }

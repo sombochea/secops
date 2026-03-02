@@ -9,7 +9,6 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { format } from "date-fns";
 import {
   CheckCircle2,
   XCircle,
@@ -26,6 +25,8 @@ import {
   Gauge,
 } from "lucide-react";
 import type { SecurityEvent } from "@/lib/types";
+import { useTimezone } from "@/lib/timezone-context";
+import { formatTz } from "@/lib/format-date";
 
 interface Props {
   event: SecurityEvent | null;
@@ -67,6 +68,7 @@ function Field({
 }
 
 export function EventDetailSheet({ event, onClose }: Props) {
+  const { timezone } = useTimezone();
   return (
     <Sheet open={!!event} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0">
@@ -85,7 +87,7 @@ export function EventDetailSheet({ event, onClose }: Props) {
               </div>
               <SheetDescription className="flex items-center gap-1.5">
                 <Clock className="h-3 w-3" />
-                {format(new Date(event.timestamp), "PPpp")}
+                {formatTz(event.timestamp, "PPpp", timezone)}
               </SheetDescription>
             </SheetHeader>
 
@@ -144,7 +146,7 @@ export function EventDetailSheet({ event, onClose }: Props) {
               </p>
               <Field icon={Hash} label="Event ID" value={event.id} mono />
               <Separator />
-              <Field icon={Clock} label="Received At" value={event.receivedAt ? format(new Date(event.receivedAt), "PPpp") : null} />
+              <Field icon={Clock} label="Received At" value={event.receivedAt ? formatTz(event.receivedAt, "PPpp", timezone) : null} />
 
               {event.metadata != null && (
                 <>

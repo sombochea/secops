@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ShieldAlert, Copy, Check, Ban, Terminal, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format-date";
 import type { RiskSource } from "@/lib/types";
 
 interface Props {
@@ -139,7 +139,7 @@ export function RiskSources({ sources, loading, total = 0, onSourceClick, onWhit
                     {s.count}
                   </Badge>
                   <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">
-                    {formatDistanceToNow(new Date(s.lastSeen), { addSuffix: true })}
+                    {formatRelative(s.lastSeen)}
                   </span>
                 </button>
                 <div className="flex items-center gap-0 shrink-0">

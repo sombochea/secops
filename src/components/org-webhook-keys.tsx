@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Key, Plus, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format-date";
 import type { WebhookKeyInfo } from "@/lib/types";
 import { AppConfig } from "@/lib/config";
 
@@ -43,7 +43,7 @@ function KeyRow({ wk, onDelete }: { wk: WebhookKeyInfo; onDelete: () => void }) 
           </code>
         </div>
         <p className="text-xs text-muted-foreground">
-          Created {formatDistanceToNow(new Date(wk.createdAt), { addSuffix: true })}
+          Created {formatRelative(wk.createdAt)}
         </p>
       </div>
       <div className="flex items-center gap-1 shrink-0">
