@@ -1,12 +1,16 @@
 # ─── Stage 1: Install dependencies ────────────────────────────────────────────
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.3-alpine AS base
+WORKDIR /app
+
+# ─── Stage 1: Install dependencies ────────────────────────────────────────────
+FROM base AS deps
 WORKDIR /app
 
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # ─── Stage 2: Build ──────────────────────────────────────────────────────────
-FROM oven/bun:1.3-alpine AS builder
+FROM base AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -18,7 +22,7 @@ ENV NODE_ENV=production
 RUN bun run build
 
 # ─── Stage 3: Production ─────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -32,6 +36,8 @@ RUN addgroup --system --gid 1001 secops && \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=secops:secops /app/.next/standalone ./
 COPY --from=builder --chown=secops:secops /app/.next/static ./.next/static
+COPY --from=builder --chown=secops:secops /app/drizzle ./drizzle
+COPY --from=builder --chown=secops:secops /app/drizzle.config.ts ./
 
 # Drop privileges
 USER secops
@@ -41,4 +47,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["bun", "server.js"]

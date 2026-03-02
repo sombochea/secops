@@ -4,35 +4,55 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: secops
-      POSTGRES_USER: secops
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secops}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/18/docker
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U secops -d secops"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d secops"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - internal
 
   app:
     image: ${COMPOSE_PROJECT_NAME:-secops}-app:latest
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgresql://secops:${DB_PASSWORD:-secops}@db:5432/secops
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/secops
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      start_period: 40s
+      retries: 3
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - internal
 
 volumes:
   pgdata:
+
+networks:
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.218.0/24
