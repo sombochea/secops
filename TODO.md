@@ -2,6 +2,9 @@
 
 - [x] Add geolocation data to events based on source IP addresses and display this information on the dashboard, including a world map visualization showing the geographic distribution of security events.
 - [x] Add CyberKiller view mode: A dedicated view that focuses on visualizing and analyzing attack patterns, showing the relationships between different events, sources, and targets in a more intuitive and interactive way, helping analysts to quickly identify potential attack paths and prioritize their investigations.
+- [x] Add a timeline view that allows analysts to see the sequence of events leading up to and following a potential security incident, providing context and helping to identify the root cause of the issue.
+- Add the ability to filter the timeline by event type, source, and other criteria to help analysts focus on the most relevant information.
+- Implement a machine learning-based anomaly detection system that can analyze historical event data to identify unusual patterns and flag potential threats that may not be immediately obvious through traditional rule-based detection methods.
 - Implement a correlation engine that can identify related events across different sources and timeframes, helping analysts to piece together attack patterns and identify potential breaches more effectively.
 - Add support for custom event types and fields, allowing users to tailor the dashboard to their specific security monitoring needs and integrate with a wider range of data sources.
 - [x] Add support organization and team management features to allow multiple users to collaborate on the SOC dashboard with different roles and permissions and a custom webhook endpoint for each team to ingest their own security event data.
