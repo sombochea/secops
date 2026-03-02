@@ -43,6 +43,13 @@
       "when": 1772448208913,
       "tag": "0005_aberrant_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772452350069,
+      "tag": "0006_lumpy_juggernaut",
+      "breakpoints": true
     }
   ]
 }

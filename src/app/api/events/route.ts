@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
     ? sql` AND ${securityEvent.sourceIp} NOT IN (${sql.join([...whitelistedIps].map(ip => sql`${ip}`), sql`, `)})`
     : sql``;
 
-  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, timeline, riskSources, riskTotal] =
+  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, byCountry, geoPoints, timeline, riskSources, riskTotal] =
     await Promise.all([
       db.select().from(securityEvent).where(where).orderBy(desc(securityEvent.timestamp)).limit(limit).offset((page - 1) * limit),
       db.select({ count: sql<number>`count(*)::int` }).from(securityEvent).where(where),
@@ -144,6 +144,21 @@ export async function GET(req: NextRequest) {
       db.select({ name: securityEvent.user, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.user} is not null`)).groupBy(securityEvent.user).orderBy(desc(sql`count(*)`)).limit(10),
       db.select({ name: securityEvent.authMethod, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.authMethod} is not null`)).groupBy(securityEvent.authMethod).orderBy(desc(sql`count(*)`)).limit(10),
       db.select({ name: securityEvent.ua, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.ua} is not null`)).groupBy(securityEvent.ua).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.geoCountry, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.geoCountry} is not null`)).groupBy(securityEvent.geoCountry).orderBy(desc(sql`count(*)`)).limit(10),
+      db.execute<{ lat: number; lon: number; country: string; city: string; count: number; threats: number }>(sql`
+        SELECT
+          ${securityEvent.geoLat} as lat,
+          ${securityEvent.geoLon} as lon,
+          ${securityEvent.geoCountry} as country,
+          coalesce(${securityEvent.geoCity}, '') as city,
+          count(*)::int as count,
+          count(*) filter (where ${THREAT_FILTER})::int as threats
+        FROM ${securityEvent}
+        WHERE ${securityEvent.geoLat} is not null AND ${orgCondition}
+        GROUP BY ${securityEvent.geoLat}, ${securityEvent.geoLon}, ${securityEvent.geoCountry}, ${securityEvent.geoCity}
+        ORDER BY count(*) DESC
+        LIMIT 50
+      `),
       timelineQuery,
       db.execute<{ source_ip: string; count: number; last_seen: string; events: string }>(sql`
         SELECT
@@ -174,7 +189,8 @@ export async function GET(req: NextRequest) {
     totalPages: Math.ceil(total / limit),
     eventTypes: eventTypes.map((e) => e.event),
     stats: stats[0],
-    aggregations: { byType, byHost, byIp, byService, byUser, byAuthMethod, byUa },
+    aggregations: { byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, byCountry },
+    geoPoints: geoPoints ?? [],
     timeline,
     riskSources: (riskSources ?? []).map((r: { source_ip: string; count: number; last_seen: string; events: string }) => ({
       sourceIp: r.source_ip,

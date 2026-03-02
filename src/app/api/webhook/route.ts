@@ -3,6 +3,7 @@ import { securityEvent, webhookKey } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { scoreEvent, isSuspicious } from "@/lib/anomaly";
+import { geoBatchLookup } from "@/lib/geoip";
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-webhook-secret");
@@ -17,6 +18,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const events = Array.isArray(body) ? body : [body];
+
+  // Batch geo lookup for all unique IPs
+  const ips = [...new Set(events.map((e: Record<string, unknown>) => e.source_ip as string).filter(Boolean))];
+  const geoMap = await geoBatchLookup(ips);
 
   const rows = [];
   for (const e of events) {
@@ -37,12 +42,16 @@ export async function POST(req: NextRequest) {
       timestamp: new Date(e.timestamp as string),
     };
 
+    const geo = parsed.sourceIp ? geoMap.get(parsed.sourceIp) : undefined;
     const riskScore = await scoreEvent(parsed);
 
     rows.push({
       ...parsed,
+      geoCountry: geo?.country ?? null,
+      geoCity: geo?.city ?? null,
+      geoLat: geo?.lat ?? null,
+      geoLon: geo?.lon ?? null,
       riskScore,
-      // Mark as suspicious if score exceeds threshold and not already failed
       status: parsed.status === "failed" ? "failed" : isSuspicious(riskScore) ? "suspicious" : parsed.status,
     });
   }

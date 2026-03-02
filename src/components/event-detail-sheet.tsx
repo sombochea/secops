@@ -104,6 +104,12 @@ export function EventDetailSheet({ event, onClose }: Props) {
               <Field icon={User} label="Remote User" value={event.ruser} />
               <Separator />
               <Field icon={Globe} label="Source IP" value={event.sourceIp} mono />
+              {event.geoCountry && (
+                <>
+                  <Separator />
+                  <Field icon={Globe} label="Location" value={[event.geoCity, event.geoCountry].filter(Boolean).join(", ")} />
+                </>
+              )}
 
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-5 pb-1">
                 Service Info

@@ -12,6 +12,10 @@ export interface SecurityEvent {
   tty: string | null;
   pamType: string | null;
   ua: string | null;
+  geoCountry: string | null;
+  geoCity: string | null;
+  geoLat: number | null;
+  geoLon: number | null;
   metadata: unknown;
   riskScore: number | null;
   timestamp: string;
@@ -31,6 +35,16 @@ export interface Aggregations {
   byUser: AggregationItem[];
   byAuthMethod: AggregationItem[];
   byUa: AggregationItem[];
+  byCountry: AggregationItem[];
+}
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+  country: string;
+  city: string;
+  count: number;
+  threats: number;
 }
 
 export interface TimelinePoint {

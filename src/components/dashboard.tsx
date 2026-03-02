@@ -10,6 +10,7 @@ import { EventCharts } from "@/components/event-charts";
 import { EventDetailSheet } from "@/components/event-detail-sheet";
 import { ActivityTimeline, rangeToParams, type TimelineRangeValue } from "@/components/activity-timeline";
 import { RiskSources } from "@/components/risk-sources";
+import { ThreatMap } from "@/components/threat-map";
 import { AboutDialog } from "@/components/about-dialog";
 import { BUILD_INFO } from "@/lib/build-info";
 import type { SecurityEvent } from "@/lib/types";
@@ -90,6 +91,7 @@ export function Dashboard({ userName }: { userName: string }) {
           />
         </div>
         <EventCharts aggregations={data?.aggregations} loading={isLoading} onSegmentClick={handleChartClick} />
+        <ThreatMap points={data?.geoPoints ?? []} loading={isLoading} />
         <EventFilters filters={filters} onChange={handleFilterChange} eventTypes={data?.eventTypes ?? []} />
         <EventsTable
           events={data?.events ?? []}

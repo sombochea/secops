@@ -8,9 +8,50 @@ import { OrgMembers } from "@/components/org-members";
 import { OrgWebhookKeys } from "@/components/org-webhook-keys";
 import { WhitelistManager } from "@/components/whitelist-manager";
 import { TimezoneSettings } from "@/components/timezone-settings";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, Users, Key, ShieldCheck, UserCircle } from "lucide-react";
+import { Building2, Users, Key, ShieldCheck, UserCircle, Globe, Loader2 } from "lucide-react";
 import { BUILD_INFO } from "@/lib/build-info";
+
+function GeoBackfill() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ updated: number; remaining: number } | null>(null);
+
+  const run = async () => {
+    setRunning(true);
+    setResult(null);
+    const res = await fetch("/api/geo-backfill", { method: "POST" });
+    const data = await res.json();
+    setResult(data);
+    setRunning(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Globe className="h-5 w-5" />
+          Geo Backfill
+        </CardTitle>
+        <CardDescription>
+          Resolve geolocation for events that were ingested before geo lookup was enabled. Processes 100 events per run.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Button onClick={run} disabled={running} className="gap-1.5">
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+          {running ? "Resolving..." : "Run Backfill"}
+        </Button>
+        {result && (
+          <p className="text-sm text-muted-foreground">
+            Updated {result.updated} events. {result.remaining > 0 ? `${result.remaining} remaining — run again.` : "All done!"}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function SettingsPage({ userName }: { userName: string }) {
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -43,7 +84,10 @@ export function SettingsPage({ userName }: { userName: string }) {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
-            <TimezoneSettings />
+            <div className="space-y-6">
+              <TimezoneSettings />
+              <GeoBackfill />
+            </div>
           </TabsContent>
           <TabsContent value="organization">
             <OrgSwitcher />

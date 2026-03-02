@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, uuid, jsonb, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, uuid, jsonb, index, integer, doublePrecision } from "drizzle-orm/pg-core";
 
 // ─── Better Auth tables ──────────────────────────────────────────────────────
 
@@ -174,6 +174,10 @@ export const securityEvent = pgTable(
     tty: text("tty"),
     pamType: text("pam_type"),
     ua: text("ua"),
+    geoCountry: text("geo_country"),
+    geoCity: text("geo_city"),
+    geoLat: doublePrecision("geo_lat"),
+    geoLon: doublePrecision("geo_lon"),
     metadata: jsonb("metadata"),
     riskScore: integer("risk_score").default(0),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
