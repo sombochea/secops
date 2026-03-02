@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Shield, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Props {
   open: boolean;
@@ -20,6 +21,9 @@ export function AboutDialog({ open, onOpenChange }: Props) {
           <DialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
             SecOps Center
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-yellow-500/50 text-yellow-500">
+              v0.1.0-alpha
+            </Badge>
           </DialogTitle>
           <DialogDescription>Security Operations Center Dashboard</DialogDescription>
         </DialogHeader>
@@ -30,6 +34,10 @@ export function AboutDialog({ open, onOpenChange }: Props) {
             who need fast visibility and quick mitigation tools.
           </p>
           <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Version</span>
+              <span>0.1.0-alpha</span>
+            </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Built by</span>
               <a href="https://github.com/sombochea" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">

@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: secops
+      POSTGRES_USER: secops
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secops}
+    volumes:
+      - pgdata:/var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secops -d secops"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    image: ${COMPOSE_PROJECT_NAME:-secops}-app:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://secops:${DB_PASSWORD:-secops}@db:5432/secops
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

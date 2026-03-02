@@ -131,6 +131,22 @@ bun run db:push      # Push schema directly to database
 bun run db:studio    # Open Drizzle Studio
 ```
 
+## Docker Deployment
+
+```bash
+# Configure secrets
+cp .env.example .env
+# Edit .env — set BETTER_AUTH_SECRET and optionally DB_PASSWORD
+
+# Start everything
+docker compose up -d
+
+# Push schema to the database
+docker compose exec app node -e "require('child_process').execSync('npx drizzle-kit push', {stdio:'inherit'})"
+```
+
+The production image is ~120MB (Node Alpine), runs as non-root user `secops`, and includes only the standalone Next.js output.
+
 ## License
 
 MIT — Free to use and customize.
