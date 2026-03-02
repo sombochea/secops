@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { securityEvent } from "@/db/schema";
 import { auth } from "@/lib/auth";
-import { desc, sql, eq, and, gte, ilike } from "drizzle-orm";
+import { desc, sql, eq, and, gte, ilike, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,6 +14,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const orgId = session.session.activeOrganizationId;
+  // Scope: if user has an active org, show that org's events. Otherwise show unscoped events.
+  const orgCondition = orgId
+    ? eq(securityEvent.organizationId, orgId)
+    : isNull(securityEvent.organizationId);
+
   const url = req.nextUrl;
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
   const limit = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") ?? "20")), 100);
@@ -25,7 +31,7 @@ export async function GET(req: NextRequest) {
   const service = url.searchParams.get("service") ?? "";
   const since = url.searchParams.get("since") ?? "";
 
-  const conditions = [];
+  const conditions = [orgCondition];
   if (search) {
     conditions.push(
       sql`(${ilike(securityEvent.host, `%${search}%`)} OR ${ilike(securityEvent.user, `%${search}%`)} OR ${ilike(securityEvent.sourceIp, `%${search}%`)} OR ${ilike(securityEvent.service, `%${search}%`)} OR ${ilike(securityEvent.event, `%${search}%`)})`
@@ -38,13 +44,17 @@ export async function GET(req: NextRequest) {
   if (service) conditions.push(eq(securityEvent.service, service));
   if (since) conditions.push(gte(securityEvent.timestamp, new Date(since)));
 
-  const where = conditions.length ? and(...conditions) : undefined;
+  const where = and(...conditions);
+
+  const orgFilter = orgId
+    ? sql.raw(`e.organization_id = '${orgId}'`)
+    : sql.raw(`e.organization_id is null`);
 
   const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, timeline, riskSources] =
     await Promise.all([
       db.select().from(securityEvent).where(where).orderBy(desc(securityEvent.timestamp)).limit(limit).offset((page - 1) * limit),
       db.select({ count: sql<number>`count(*)::int` }).from(securityEvent).where(where),
-      db.selectDistinct({ event: securityEvent.event }).from(securityEvent).orderBy(securityEvent.event),
+      db.selectDistinct({ event: securityEvent.event }).from(securityEvent).where(orgCondition).orderBy(securityEvent.event),
       db
         .select({
           total: sql<number>`count(*)::int`,
@@ -55,12 +65,12 @@ export async function GET(req: NextRequest) {
           last7d: sql<number>`count(*) filter (where ${securityEvent.timestamp} > now() - interval '7 days')::int`,
           threats: sql<number>`count(*) filter (where ${THREAT_FILTER})::int`,
         })
-        .from(securityEvent),
-      db.select({ name: securityEvent.event, count: sql<number>`count(*)::int` }).from(securityEvent).groupBy(securityEvent.event).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.host, count: sql<number>`count(*)::int` }).from(securityEvent).where(sql`${securityEvent.host} is not null`).groupBy(securityEvent.host).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.sourceIp, count: sql<number>`count(*)::int` }).from(securityEvent).where(sql`${securityEvent.sourceIp} is not null`).groupBy(securityEvent.sourceIp).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.service, count: sql<number>`count(*)::int` }).from(securityEvent).where(sql`${securityEvent.service} is not null`).groupBy(securityEvent.service).orderBy(desc(sql`count(*)`)).limit(10),
-      // Activity timeline: last 14 days, grouped by day
+        .from(securityEvent)
+        .where(orgCondition),
+      db.select({ name: securityEvent.event, count: sql<number>`count(*)::int` }).from(securityEvent).where(orgCondition).groupBy(securityEvent.event).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.host, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.host} is not null`)).groupBy(securityEvent.host).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.sourceIp, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.sourceIp} is not null`)).groupBy(securityEvent.sourceIp).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.service, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.service} is not null`)).groupBy(securityEvent.service).orderBy(desc(sql`count(*)`)).limit(10),
       db.execute<{ date: string; total: number; threats: number }>(sql`
         SELECT
           d::date::text as date,
@@ -71,11 +81,10 @@ export async function GET(req: NextRequest) {
           now()::date,
           '1 day'
         ) d
-        LEFT JOIN "security_event" e ON e.timestamp::date = d::date
+        LEFT JOIN "security_event" e ON e.timestamp::date = d::date AND ${orgFilter}
         GROUP BY d::date
         ORDER BY d::date
       `),
-      // Highest risk sources: IPs with most threat events
       db.execute<{ source_ip: string; count: number; last_seen: string; events: string }>(sql`
         SELECT
           ${securityEvent.sourceIp} as source_ip,
@@ -83,7 +92,7 @@ export async function GET(req: NextRequest) {
           max(${securityEvent.timestamp})::text as last_seen,
           string_agg(distinct ${securityEvent.event}, ', ') as events
         FROM ${securityEvent}
-        WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null
+        WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null AND ${orgCondition}
         GROUP BY ${securityEvent.sourceIp}
         ORDER BY count(*) DESC
         LIMIT 5
@@ -101,7 +110,7 @@ export async function GET(req: NextRequest) {
     eventTypes: eventTypes.map((e) => e.event),
     stats: stats[0],
     aggregations: { byType, byHost, byIp, byService },
-    timeline: timeline,
+    timeline,
     riskSources: (riskSources ?? []).map((r: { source_ip: string; count: number; last_seen: string; events: string }) => ({
       sourceIp: r.source_ip,
       count: r.count,

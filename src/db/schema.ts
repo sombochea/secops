@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, boolean, uuid, jsonb, index } from "drizzle-orm/pg-core";
 
-// Better Auth tables
+// ─── Better Auth tables ──────────────────────────────────────────────────────
+
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -22,6 +23,7 @@ export const session = pgTable("session", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  activeOrganizationId: text("active_organization_id"),
 });
 
 export const account = pgTable("account", {
@@ -51,11 +53,69 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// SOC Event table
+// ─── Better Auth Organization tables ─────────────────────────────────────────
+
+export const organization = pgTable("organization", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  metadata: text("metadata"),
+});
+
+export const member = pgTable("member", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const invitation = pgTable("invitation", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("member"),
+  status: text("status").notNull().default("pending"),
+  expiresAt: timestamp("expires_at").notNull(),
+  inviterId: text("inviter_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+});
+
+// ─── Team webhook keys ───────────────────────────────────────────────────────
+
+export const webhookKey = pgTable(
+  "webhook_key",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    key: text("key").notNull().unique(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [index("idx_webhook_key").on(table.key)]
+);
+
+// ─── SOC Event table ─────────────────────────────────────────────────────────
+
 export const securityEvent = pgTable(
   "security_event",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").references(() => organization.id, { onDelete: "cascade" }),
     event: text("event").notNull(),
     status: text("status"),
     authMethod: text("auth_method"),
@@ -73,6 +133,7 @@ export const securityEvent = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("idx_event_org").on(table.organizationId),
     index("idx_event_type").on(table.event),
     index("idx_event_host").on(table.host),
     index("idx_event_source_ip").on(table.sourceIp),

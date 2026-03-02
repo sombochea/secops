@@ -1,5 +1,6 @@
 export interface SecurityEvent {
   id: string;
+  organizationId: string | null;
   event: string;
   status: string | null;
   authMethod: string | null;
@@ -48,4 +49,12 @@ export interface Stats {
   last24h: number;
   last7d: number;
   threats: number;
+}
+
+export interface WebhookKeyInfo {
+  id: string;
+  name: string;
+  key: string;
+  createdAt: string;
+  createdBy: string;
 }
