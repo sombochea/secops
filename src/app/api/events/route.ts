@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
     ? sql` AND ${securityEvent.sourceIp} NOT IN (${sql.join([...whitelistedIps].map(ip => sql`${ip}`), sql`, `)})`
     : sql``;
 
-  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, timeline, riskSources] =
+  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, byUser, byAuthMethod, timeline, riskSources, riskTotal] =
     await Promise.all([
       db.select().from(securityEvent).where(where).orderBy(desc(securityEvent.timestamp)).limit(limit).offset((page - 1) * limit),
       db.select({ count: sql<number>`count(*)::int` }).from(securityEvent).where(where),
@@ -139,6 +139,8 @@ export async function GET(req: NextRequest) {
       db.select({ name: securityEvent.host, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.host} is not null`)).groupBy(securityEvent.host).orderBy(desc(sql`count(*)`)).limit(10),
       db.select({ name: securityEvent.sourceIp, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.sourceIp} is not null`)).groupBy(securityEvent.sourceIp).orderBy(desc(sql`count(*)`)).limit(10),
       db.select({ name: securityEvent.service, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.service} is not null`)).groupBy(securityEvent.service).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.user, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.user} is not null`)).groupBy(securityEvent.user).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.authMethod, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.authMethod} is not null`)).groupBy(securityEvent.authMethod).orderBy(desc(sql`count(*)`)).limit(10),
       timelineQuery,
       db.execute<{ source_ip: string; count: number; last_seen: string; events: string }>(sql`
         SELECT
@@ -152,6 +154,11 @@ export async function GET(req: NextRequest) {
         ORDER BY count(*) DESC
         LIMIT 10
       `),
+      db.execute<{ total: number }>(sql`
+        SELECT count(distinct ${securityEvent.sourceIp})::int as total
+        FROM ${securityEvent}
+        WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null AND ${orgCondition}${whitelistExclusion}
+      `),
     ]);
 
   const total = countResult[0].count;
@@ -164,7 +171,7 @@ export async function GET(req: NextRequest) {
     totalPages: Math.ceil(total / limit),
     eventTypes: eventTypes.map((e) => e.event),
     stats: stats[0],
-    aggregations: { byType, byHost, byIp, byService },
+    aggregations: { byType, byHost, byIp, byService, byUser, byAuthMethod },
     timeline,
     riskSources: (riskSources ?? []).map((r: { source_ip: string; count: number; last_seen: string; events: string }) => ({
       sourceIp: r.source_ip,
@@ -172,6 +179,7 @@ export async function GET(req: NextRequest) {
       lastSeen: r.last_seen,
       events: r.events?.split(", ") ?? [],
     })),
+    riskTotal: (riskTotal as { total: number }[])?.[0]?.total ?? 0,
     whitelistedIps: [...whitelistedIps],
   });
 }

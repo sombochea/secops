@@ -27,6 +27,8 @@ export interface Aggregations {
   byHost: AggregationItem[];
   byIp: AggregationItem[];
   byService: AggregationItem[];
+  byUser: AggregationItem[];
+  byAuthMethod: AggregationItem[];
 }
 
 export interface TimelinePoint {

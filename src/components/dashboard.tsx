@@ -81,6 +81,7 @@ export function Dashboard({ userName }: { userName: string }) {
           <RiskSources
             sources={data?.riskSources}
             loading={isLoading}
+            total={data?.riskTotal}
             onSourceClick={(ip) => handleFilterChange({ ...filters, source_ip: ip })}
             onWhitelist={handleWhitelist}
             whitelistedIps={data?.whitelistedIps}

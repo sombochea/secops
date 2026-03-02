@@ -175,8 +175,8 @@ function MiniPieChart({
 export function EventCharts({ aggregations, loading, onSegmentClick }: Props) {
   if (loading && !aggregations) {
     return (
-      <div className="grid gap-4 md:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
           <Card key={i}>
             <CardHeader className="pb-2">
               <div className="h-4 w-32 rounded bg-muted animate-pulse" />
@@ -190,12 +190,14 @@ export function EventCharts({ aggregations, loading, onSegmentClick }: Props) {
     );
   }
 
-  const { byType = [], byHost = [], byIp = [], byService = [] } = aggregations ?? {};
+  const { byType = [], byHost = [], byIp = [], byService = [], byUser = [], byAuthMethod = [] } = aggregations ?? {};
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <MiniPieChart title="Events by Type" data={byType} filterKey="event" onSegmentClick={onSegmentClick} />
       <MiniBarChart title="Top Hosts" data={byHost} filterKey="host" onSegmentClick={onSegmentClick} />
+      <MiniBarChart title="Top Users" data={byUser} filterKey="user" onSegmentClick={onSegmentClick} />
+      <MiniPieChart title="Auth Methods" data={byAuthMethod} filterKey="auth_method" onSegmentClick={onSegmentClick} />
       <MiniPieChart title="Top Source IPs" data={byIp} filterKey="source_ip" onSegmentClick={onSegmentClick} />
       <MiniBarChart title="Top Services" data={byService} filterKey="service" onSegmentClick={onSegmentClick} />
     </div>
