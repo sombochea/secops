@@ -50,7 +50,7 @@ function KeyRow({ wk, onDelete }: { wk: WebhookKeyInfo; onDelete: () => void }) 
           </code>
         </div>
         <p className="text-xs text-muted-foreground">
-          Created {formatRelative(wk.createdAt)}
+          Created {formatRelative(wk.createdAt)}{wk.createdByName ? ` by ${wk.createdByName}` : ""}
         </p>
       </div>
       <div className="flex items-center gap-1 shrink-0">

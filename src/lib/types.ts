@@ -75,4 +75,5 @@ export interface WebhookKeyInfo {
   key: string;
   createdAt: string;
   createdBy: string;
+  createdByName: string | null;
 }

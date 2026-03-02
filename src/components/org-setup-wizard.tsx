@@ -19,6 +19,7 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [existingKeys, setExistingKeys] = useState(0);
 
   // Check if user already has orgs they can activate
   const { data: orgs } = authClient.useListOrganizations();
@@ -42,6 +43,10 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
   const handleSelectOrg = async (orgId: string) => {
     setLoading(true);
     await authClient.organization.setActive({ organizationId: orgId });
+    // Check if org already has webhook keys
+    const res = await fetch("/api/webhook-keys").then((r) => r.json()).catch(() => ({ keys: [] }));
+    const count = res.keys?.length ?? 0;
+    setExistingKeys(count);
     setStep("webhook");
     setLoading(false);
   };
@@ -208,6 +213,16 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
                   Generate Key
                 </Button>
+                {existingKeys > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => { window.location.href = "/"; }}
+                  >
+                    Skip — already have {existingKeys} {existingKeys === 1 ? "key" : "keys"}
+                  </Button>
+                )}
               </form>
             </CardContent>
           </Card>

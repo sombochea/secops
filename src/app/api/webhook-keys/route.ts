@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { webhookKey } from "@/db/schema";
+import { webhookKey, user } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { headers } from "next/headers";
@@ -21,8 +21,16 @@ export async function GET() {
   if (!orgId) return NextResponse.json({ keys: [] });
 
   const keys = await db
-    .select()
+    .select({
+      id: webhookKey.id,
+      name: webhookKey.name,
+      key: webhookKey.key,
+      createdAt: webhookKey.createdAt,
+      createdBy: webhookKey.createdBy,
+      createdByName: user.name,
+    })
     .from(webhookKey)
+    .leftJoin(user, eq(webhookKey.createdBy, user.id))
     .where(eq(webhookKey.organizationId, orgId))
     .orderBy(desc(webhookKey.createdAt));
 
