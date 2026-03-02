@@ -1,11 +1,12 @@
 'use client';
 
 import useSWR from 'swr';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip as RTooltip, Legend, CartesianGrid } from 'recharts';
 import {
     Shield,
     Crosshair,
@@ -18,6 +19,10 @@ import {
     ArrowLeft,
     Maximize,
     Minimize,
+    GitCompareArrows,
+    TrendingUp,
+    TrendingDown,
+    Minus,
 } from 'lucide-react';
 import { useTimezone } from '@/lib/timezone-context';
 import { formatTz, formatRelative } from '@/lib/format-date';
@@ -497,10 +502,128 @@ function CyberKillerMap({ points }: { points: GeoPoint[] }) {
     );
 }
 
+// --- Then & Now Comparison Panel ---
+function Delta({ now, then, label, icon: Icon }: { now: number; then: number; label: string; icon: React.ElementType }) {
+  const diff = now - then;
+  const pct = then > 0 ? Math.round((diff / then) * 100) : now > 0 ? 100 : 0;
+  return (
+    <div className="flex flex-col items-center gap-0.5 px-3 py-2 bg-card/50 rounded border border-border/50">
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <div className="flex items-center gap-1">
+        <span className="text-sm font-bold">{now}</span>
+        {diff !== 0 && (
+          <span className={`text-[10px] flex items-center gap-0.5 ${diff > 0 ? "text-red-400" : "text-emerald-400"}`}>
+            {diff > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {diff > 0 ? "+" : ""}{pct}%
+          </span>
+        )}
+        {diff === 0 && <Minus className="h-3 w-3 text-muted-foreground" />}
+      </div>
+      <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</span>
+    </div>
+  );
+}
+
+function ComparePanel({ hours, onHoursChange }: { hours: string; onHoursChange: (h: string) => void }) {
+  const { data } = useSWR(`/api/events/compare?hours=${hours}`, fetcher, { refreshInterval: 10000 });
+
+  if (!data) return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">Loading comparison...</div>;
+
+  const { now: n, then: t, timeline, topIps } = data;
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <GitCompareArrows className="h-3.5 w-3.5 text-blue-400" />
+          <span className="text-xs font-medium uppercase tracking-wider">Then &amp; Now</span>
+        </div>
+        <Select value={hours} onValueChange={onHoursChange}>
+          <SelectTrigger className="h-6 w-[90px] text-[10px] border-border/50">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">1h</SelectItem>
+            <SelectItem value="6">6h</SelectItem>
+            <SelectItem value="12">12h</SelectItem>
+            <SelectItem value="24">24h</SelectItem>
+            <SelectItem value="72">3d</SelectItem>
+            <SelectItem value="168">7d</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Delta stats */}
+      <div className="grid grid-cols-3 gap-1.5 px-3 py-2 shrink-0">
+        <Delta now={n.total} then={t.total} label="Events" icon={Activity} />
+        <Delta now={n.threats} then={t.threats} label="Threats" icon={AlertTriangle} />
+        <Delta now={n.unique_ips} then={t.unique_ips} label="IPs" icon={Globe} />
+      </div>
+
+      {/* Overlay timeline chart */}
+      <div className="flex-1 min-h-0 px-2 pb-1">
+        <div className="text-[9px] text-muted-foreground px-1 mb-0.5">Activity overlay — <span className="text-blue-400">Now</span> vs <span className="text-muted-foreground/60">Then</span></div>
+        <div className="h-[calc(100%-16px)]">
+          {(timeline?.length ?? 0) > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={timeline} margin={{ top: 2, right: 4, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="cmpNow" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(221,83%,53%)" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(221,83%,53%)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="cmpThen" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(215,20%,50%)" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="hsl(215,20%,50%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="offset_h" hide />
+                <YAxis hide />
+                <Area type="monotone" dataKey="then_total" stroke="hsl(215,20%,40%)" strokeWidth={1} strokeDasharray="4 2" fill="url(#cmpThen)" />
+                <Area type="monotone" dataKey="now_total" stroke="hsl(221,83%,53%)" strokeWidth={1.5} fill="url(#cmpNow)" />
+                <Area type="monotone" dataKey="now_threats" stroke="hsl(0,72%,51%)" strokeWidth={1} fill="none" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No data</div>
+          )}
+        </div>
+      </div>
+
+      {/* Top attacker comparison */}
+      {(topIps?.length ?? 0) > 0 && (
+        <div className="shrink-0 border-t border-border/50 px-3 py-2 max-h-[140px] overflow-y-auto">
+          <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">Top Attackers — Now vs Then</div>
+          <div className="space-y-1">
+            {topIps.slice(0, 5).map((ip: { source_ip: string; now_count: number; then_count: number }) => {
+              const max = Math.max(ip.now_count, ip.then_count, 1);
+              return (
+                <div key={ip.source_ip} className="text-[10px]">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-mono truncate">{ip.source_ip}</span>
+                    <span className="text-muted-foreground">{ip.now_count} / {ip.then_count}</span>
+                  </div>
+                  <div className="flex gap-0.5 h-1.5">
+                    <div className="bg-blue-500 rounded-sm" style={{ width: `${(ip.now_count / max) * 100}%` }} />
+                    <div className="bg-muted-foreground/30 rounded-sm" style={{ width: `${(ip.then_count / max) * 100}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CyberKillerView() {
     const router = useRouter();
     const { timezone } = useTimezone();
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [showCompare, setShowCompare] = useState(false);
+    const [compareHours, setCompareHours] = useState("24");
     const containerRef = useRef<HTMLDivElement>(null);
 
     const [apiUrl] = useState(() => {
@@ -569,6 +692,15 @@ export function CyberKillerView() {
                     <ThreatLevel stats={stats} />
                 </div>
                 <div className="flex items-center gap-3">
+                    <Button
+                        variant={showCompare ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 text-[10px] gap-1"
+                        onClick={() => setShowCompare(!showCompare)}
+                    >
+                        <GitCompareArrows className="h-3 w-3" />
+                        Then &amp; Now
+                    </Button>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         LIVE · 3s
@@ -645,14 +777,20 @@ export function CyberKillerView() {
                     </div>
                 </div>
 
-                {/* Right: attackers + timeline */}
+                {/* Right: attackers + timeline OR compare panel */}
                 <div className="flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-hidden border-b border-border/50">
-                        <AttackerBoard sources={riskSources} />
-                    </div>
-                    <div className="h-[180px] shrink-0">
-                        <MiniTimeline data={timeline} />
-                    </div>
+                    {showCompare ? (
+                        <ComparePanel hours={compareHours} onHoursChange={setCompareHours} />
+                    ) : (
+                        <>
+                            <div className="flex-1 overflow-hidden border-b border-border/50">
+                                <AttackerBoard sources={riskSources} />
+                            </div>
+                            <div className="h-[180px] shrink-0">
+                                <MiniTimeline data={timeline} />
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>
