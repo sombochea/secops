@@ -115,6 +115,8 @@ export function EventDetailSheet({ event, onClose }: Props) {
               <Field icon={Key} label="PAM Type" value={event.pamType} />
               <Separator />
               <Field icon={Key} label="Auth Method" value={event.authMethod} />
+              <Separator />
+              <Field icon={Monitor} label="User Agent" value={event.ua} />
 
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-5 pb-1">
                 Status

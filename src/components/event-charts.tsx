@@ -190,7 +190,7 @@ export function EventCharts({ aggregations, loading, onSegmentClick }: Props) {
     );
   }
 
-  const { byType = [], byHost = [], byIp = [], byService = [], byUser = [], byAuthMethod = [] } = aggregations ?? {};
+  const { byType = [], byHost = [], byIp = [], byService = [], byUser = [], byAuthMethod = [], byUa = [] } = aggregations ?? {};
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -200,6 +200,7 @@ export function EventCharts({ aggregations, loading, onSegmentClick }: Props) {
       <MiniPieChart title="Auth Methods" data={byAuthMethod} filterKey="auth_method" onSegmentClick={onSegmentClick} />
       <MiniPieChart title="Top Source IPs" data={byIp} filterKey="source_ip" onSegmentClick={onSegmentClick} />
       <MiniBarChart title="Top Services" data={byService} filterKey="service" onSegmentClick={onSegmentClick} />
+      <MiniBarChart title="User Agents" data={byUa} filterKey="ua" onSegmentClick={onSegmentClick} />
     </div>
   );
 }

@@ -11,6 +11,7 @@ export interface SecurityEvent {
   service: string | null;
   tty: string | null;
   pamType: string | null;
+  ua: string | null;
   metadata: unknown;
   riskScore: number | null;
   timestamp: string;
@@ -29,6 +30,7 @@ export interface Aggregations {
   byService: AggregationItem[];
   byUser: AggregationItem[];
   byAuthMethod: AggregationItem[];
+  byUa: AggregationItem[];
 }
 
 export interface TimelinePoint {

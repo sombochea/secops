@@ -1,0 +1,1 @@
+ALTER TABLE "security_event" ADD COLUMN "ua" text;

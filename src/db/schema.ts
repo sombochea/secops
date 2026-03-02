@@ -173,6 +173,7 @@ export const securityEvent = pgTable(
     service: text("service"),
     tty: text("tty"),
     pamType: text("pam_type"),
+    ua: text("ua"),
     metadata: jsonb("metadata"),
     riskScore: integer("risk_score").default(0),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),

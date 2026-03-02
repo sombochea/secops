@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       service: (e.service as string) ?? null,
       tty: (e.tty as string) ?? null,
       pamType: (e.pam_type as string) ?? null,
+      ua: (e.ua as string) ?? null,
       metadata: e.metadata ?? null,
       timestamp: new Date(e.timestamp as string),
     };

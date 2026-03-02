@@ -36,6 +36,7 @@ export function Dashboard({ userName }: { userName: string }) {
   if (filters.source_ip) params.set("source_ip", filters.source_ip);
   if (filters.user) params.set("user", filters.user);
   if (filters.service) params.set("service", filters.service);
+  if (filters.ua) params.set("ua", filters.ua);
   if (dateParams.from) params.set("from", dateParams.from);
   if (dateParams.to) params.set("to", dateParams.to);
 

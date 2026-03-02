@@ -19,6 +19,7 @@ export interface Filters {
   source_ip?: string;
   user?: string;
   service?: string;
+  ua?: string;
 }
 
 const FILTER_LABELS: Record<string, string> = {
@@ -28,6 +29,7 @@ const FILTER_LABELS: Record<string, string> = {
   source_ip: "Source IP",
   user: "User",
   service: "Service",
+  ua: "User Agent",
 };
 
 interface Props {

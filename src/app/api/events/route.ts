@@ -26,13 +26,14 @@ export async function GET(req: NextRequest) {
   const sourceIp = url.searchParams.get("source_ip") ?? "";
   const userFilter = url.searchParams.get("user") ?? "";
   const service = url.searchParams.get("service") ?? "";
+  const ua = url.searchParams.get("ua") ?? "";
   const from = url.searchParams.get("from") ?? "";
   const to = url.searchParams.get("to") ?? "";
 
   const conditions = [orgCondition];
   if (search) {
     conditions.push(
-      sql`(${ilike(securityEvent.host, `%${search}%`)} OR ${ilike(securityEvent.user, `%${search}%`)} OR ${ilike(securityEvent.sourceIp, `%${search}%`)} OR ${ilike(securityEvent.service, `%${search}%`)} OR ${ilike(securityEvent.event, `%${search}%`)})`
+      sql`(${ilike(securityEvent.host, `%${search}%`)} OR ${ilike(securityEvent.user, `%${search}%`)} OR ${ilike(securityEvent.sourceIp, `%${search}%`)} OR ${ilike(securityEvent.service, `%${search}%`)} OR ${ilike(securityEvent.event, `%${search}%`)} OR ${ilike(securityEvent.ua, `%${search}%`)})`
     );
   }
   if (eventType) conditions.push(eq(securityEvent.event, eventType));
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
   if (sourceIp) conditions.push(ilike(securityEvent.sourceIp, `%${sourceIp}%`));
   if (userFilter) conditions.push(ilike(securityEvent.user, `%${userFilter}%`));
   if (service) conditions.push(eq(securityEvent.service, service));
+  if (ua) conditions.push(ilike(securityEvent.ua, `%${ua}%`));
   if (from) conditions.push(gte(securityEvent.timestamp, new Date(from)));
   if (to) conditions.push(lte(securityEvent.timestamp, new Date(to)));
 
@@ -118,7 +120,7 @@ export async function GET(req: NextRequest) {
     ? sql` AND ${securityEvent.sourceIp} NOT IN (${sql.join([...whitelistedIps].map(ip => sql`${ip}`), sql`, `)})`
     : sql``;
 
-  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, byUser, byAuthMethod, timeline, riskSources, riskTotal] =
+  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, timeline, riskSources, riskTotal] =
     await Promise.all([
       db.select().from(securityEvent).where(where).orderBy(desc(securityEvent.timestamp)).limit(limit).offset((page - 1) * limit),
       db.select({ count: sql<number>`count(*)::int` }).from(securityEvent).where(where),
@@ -141,6 +143,7 @@ export async function GET(req: NextRequest) {
       db.select({ name: securityEvent.service, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.service} is not null`)).groupBy(securityEvent.service).orderBy(desc(sql`count(*)`)).limit(10),
       db.select({ name: securityEvent.user, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.user} is not null`)).groupBy(securityEvent.user).orderBy(desc(sql`count(*)`)).limit(10),
       db.select({ name: securityEvent.authMethod, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.authMethod} is not null`)).groupBy(securityEvent.authMethod).orderBy(desc(sql`count(*)`)).limit(10),
+      db.select({ name: securityEvent.ua, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.ua} is not null`)).groupBy(securityEvent.ua).orderBy(desc(sql`count(*)`)).limit(10),
       timelineQuery,
       db.execute<{ source_ip: string; count: number; last_seen: string; events: string }>(sql`
         SELECT
@@ -171,7 +174,7 @@ export async function GET(req: NextRequest) {
     totalPages: Math.ceil(total / limit),
     eventTypes: eventTypes.map((e) => e.event),
     stats: stats[0],
-    aggregations: { byType, byHost, byIp, byService, byUser, byAuthMethod },
+    aggregations: { byType, byHost, byIp, byService, byUser, byAuthMethod, byUa },
     timeline,
     riskSources: (riskSources ?? []).map((r: { source_ip: string; count: number; last_seen: string; events: string }) => ({
       sourceIp: r.source_ip,
