@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ShieldAlert, Copy, Check, Ban, Terminal } from "lucide-react";
+import { ShieldAlert, Copy, Check, Ban, Terminal, ShieldCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { RiskSource } from "@/lib/types";
 
@@ -18,6 +18,8 @@ interface Props {
   sources?: RiskSource[];
   loading: boolean;
   onSourceClick: (ip: string) => void;
+  onWhitelist: (ip: string) => void;
+  whitelistedIps?: string[];
 }
 
 function copyToClipboard(text: string) {
@@ -38,12 +40,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={handleCopy}
-          >
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleCopy}>
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
         </TooltipTrigger>
@@ -56,19 +53,16 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 function generateFail2banCommands(sources: RiskSource[]): string {
-  return sources
-    .map((s) => `sudo fail2ban-client set sshd banip ${s.sourceIp}`)
-    .join("\n");
+  return sources.map((s) => `sudo fail2ban-client set sshd banip ${s.sourceIp}`).join("\n");
 }
 
 function generateIptablesCommands(sources: RiskSource[]): string {
-  return sources
-    .map((s) => `sudo iptables -A INPUT -s ${s.sourceIp} -j DROP`)
-    .join("\n");
+  return sources.map((s) => `sudo iptables -A INPUT -s ${s.sourceIp} -j DROP`).join("\n");
 }
 
-export function RiskSources({ sources, loading, onSourceClick }: Props) {
+export function RiskSources({ sources, loading, onSourceClick, onWhitelist, whitelistedIps = [] }: Props) {
   const [copiedAll, setCopiedAll] = useState<"f2b" | "ipt" | null>(null);
+  const whitelistSet = new Set(whitelistedIps);
 
   const handleCopyAll = async (type: "f2b" | "ipt") => {
     if (!sources?.length) return;
@@ -91,37 +85,23 @@ export function RiskSources({ sources, loading, onSourceClick }: Props) {
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={() => handleCopyAll("f2b")}
-                    >
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => handleCopyAll("f2b")}>
                       {copiedAll === "f2b" ? <Check className="h-3 w-3 text-emerald-500" /> : <Ban className="h-3 w-3" />}
                       fail2ban
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Copy all fail2ban ban commands</p>
-                  </TooltipContent>
+                  <TooltipContent><p className="text-xs">Copy all fail2ban ban commands</p></TooltipContent>
                 </Tooltip>
               </TooltipProvider>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={() => handleCopyAll("ipt")}
-                    >
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => handleCopyAll("ipt")}>
                       {copiedAll === "ipt" ? <Check className="h-3 w-3 text-emerald-500" /> : <Terminal className="h-3 w-3" />}
                       iptables
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Copy all iptables drop commands</p>
-                  </TooltipContent>
+                  <TooltipContent><p className="text-xs">Copy all iptables drop commands</p></TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
@@ -130,27 +110,17 @@ export function RiskSources({ sources, loading, onSourceClick }: Props) {
       </CardHeader>
       <CardContent>
         {loading && !sources?.length ? (
-          <div className="flex h-[180px] items-center justify-center text-muted-foreground text-sm">
-            Loading...
-          </div>
+          <div className="flex h-[180px] items-center justify-center text-muted-foreground text-sm">Loading...</div>
         ) : !sources?.length ? (
-          <div className="flex h-[180px] items-center justify-center text-muted-foreground text-sm">
-            No threats detected
-          </div>
+          <div className="flex h-[180px] items-center justify-center text-muted-foreground text-sm">No threats detected</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {sources.map((s, i) => (
-              <div
-                key={s.sourceIp}
-                className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-              >
+              <div key={s.sourceIp} className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-500 text-xs font-bold">
                   {i + 1}
                 </div>
-                <button
-                  className="flex-1 min-w-0 space-y-1.5 text-left"
-                  onClick={() => onSourceClick(s.sourceIp)}
-                >
+                <button className="flex-1 min-w-0 space-y-1.5 text-left" onClick={() => onSourceClick(s.sourceIp)}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-sm font-medium">{s.sourceIp}</span>
                     <Badge variant="destructive" className="text-xs shrink-0">
@@ -159,9 +129,7 @@ export function RiskSources({ sources, loading, onSourceClick }: Props) {
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {s.events.map((e) => (
-                      <Badge key={e} variant="outline" className="text-[10px] px-1.5 py-0">
-                        {e}
-                      </Badge>
+                      <Badge key={e} variant="outline" className="text-[10px] px-1.5 py-0">{e}</Badge>
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -169,14 +137,26 @@ export function RiskSources({ sources, loading, onSourceClick }: Props) {
                   </p>
                 </button>
                 <div className="flex flex-col gap-0.5 shrink-0">
-                  <CopyButton
-                    text={`sudo fail2ban-client set sshd banip ${s.sourceIp}`}
-                    label="Copy fail2ban ban command"
-                  />
-                  <CopyButton
-                    text={`sudo iptables -A INPUT -s ${s.sourceIp} -j DROP`}
-                    label="Copy iptables drop command"
-                  />
+                  <CopyButton text={`sudo fail2ban-client set sshd banip ${s.sourceIp}`} label="Copy fail2ban ban command" />
+                  <CopyButton text={`sudo iptables -A INPUT -s ${s.sourceIp} -j DROP`} label="Copy iptables drop command" />
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          disabled={whitelistSet.has(s.sourceIp)}
+                          onClick={(e) => { e.stopPropagation(); onWhitelist(s.sourceIp); }}
+                        >
+                          <ShieldCheck className={`h-3.5 w-3.5 ${whitelistSet.has(s.sourceIp) ? "text-emerald-500" : ""}`} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">{whitelistSet.has(s.sourceIp) ? "Already whitelisted" : "Whitelist this IP"}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             ))}

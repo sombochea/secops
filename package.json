@@ -24,6 +24,7 @@
     "postgres": "^3.4.8",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
+    "react-day-picker": "^9.14.0",
     "react-dom": "19.2.3",
     "recharts": "2.15.4",
     "swr": "^2.4.1",

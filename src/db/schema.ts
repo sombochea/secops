@@ -109,6 +109,27 @@ export const webhookKey = pgTable(
   (table) => [index("idx_webhook_key").on(table.key)]
 );
 
+// ─── IP Whitelist ────────────────────────────────────────────────────────────
+
+export const whitelistedIp = pgTable(
+  "whitelisted_ip",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    ip: text("ip").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    index("idx_whitelist_org_ip").on(table.organizationId, table.ip),
+  ]
+);
+
 // ─── SOC Event table ─────────────────────────────────────────────────────────
 
 export const securityEvent = pgTable(

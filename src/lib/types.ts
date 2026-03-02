@@ -39,6 +39,7 @@ export interface RiskSource {
   count: number;
   lastSeen: string;
   events: string[];
+  whitelisted?: boolean;
 }
 
 export interface Stats {
@@ -49,6 +50,18 @@ export interface Stats {
   last24h: number;
   last7d: number;
   threats: number;
+}
+
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
+export interface WhitelistedIp {
+  id: string;
+  ip: string;
+  note: string | null;
+  createdAt: string;
 }
 
 export interface WebhookKeyInfo {

@@ -40,7 +40,7 @@ function StatusIcon({ status }: { status: string | null }) {
 }
 
 function isThreat(event: SecurityEvent): boolean {
-  return event.status === "failed" || event.authMethod === "invalid_user" || event.event === "ssh_attempt";
+  return event.status === "failed" || event.authMethod === "invalid_user" || event.event === "ssh_attempt" || event.status === "suspicious";
 }
 
 function Field({
