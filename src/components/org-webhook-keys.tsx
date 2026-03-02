@@ -13,7 +13,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Key, Plus, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
+import { Key, Plus, Trash2, Copy, Check, Eye, EyeOff, ClipboardCopy } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatRelative } from "@/lib/format-date";
 import type { WebhookKeyInfo } from "@/lib/types";
 import { AppConfig } from "@/lib/config";
@@ -170,28 +177,184 @@ export function OrgWebhookKeys() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Usage Example</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="rounded-lg bg-muted p-4 text-xs font-mono overflow-x-auto leading-relaxed">
-{`curl -X POST ${typeof window !== "undefined" ? window.location.origin : AppConfig.url}/api/webhook \\
-  -H "Content-Type: application/json" \\
-  -H "x-webhook-secret: YOUR_WEBHOOK_KEY" \\
-  -d '{
-    "event": "ssh_attempt",
-    "status": "failed",
-    "auth_method": "invalid_user",
-    "host": "prod-server-01",
-    "user": "root",
-    "source_ip": "203.0.113.42",
-    "service": "sshd",
-    "timestamp": "${new Date().toISOString()}"
-  }'`}
-          </pre>
-        </CardContent>
-      </Card>
+      <UsageExamples keys={keys} />
     </div>
+  );
+}
+
+const EXAMPLES: { id: string; label: string; payload: Record<string, string> }[] = [
+  {
+    id: "ssh_failed",
+    label: "SSH Failed Login",
+    payload: {
+      event: "ssh_attempt",
+      status: "failed",
+      auth_method: "invalid_user",
+      host: "prod-server-01",
+      user: "root",
+      source_ip: "203.0.113.42",
+      service: "sshd",
+      pam_type: "auth",
+      ua: "OpenSSH_9.6",
+    },
+  },
+  {
+    id: "ssh_success",
+    label: "SSH Successful Login",
+    payload: {
+      event: "ssh_session_open",
+      status: "success",
+      auth_method: "publickey",
+      host: "prod-server-01",
+      user: "deploy",
+      source_ip: "10.0.1.50",
+      service: "sshd",
+      tty: "ssh",
+      pam_type: "open_session",
+      ua: "OpenSSH_9.6",
+    },
+  },
+  {
+    id: "ssh_close",
+    label: "SSH Session Close",
+    payload: {
+      event: "ssh_session_close",
+      status: "closed",
+      auth_method: "publickey",
+      host: "prod-server-01",
+      user: "deploy",
+      source_ip: "10.0.1.50",
+      service: "sshd",
+      pam_type: "close_session",
+    },
+  },
+  {
+    id: "web_403",
+    label: "Web — 403 Forbidden",
+    payload: {
+      event: "http_request",
+      status: "failed",
+      host: "api.example.com",
+      user: "anonymous",
+      source_ip: "198.51.100.77",
+      service: "nginx",
+      ua: "Mozilla/5.0 (compatible; bot/1.0)",
+    },
+  },
+  {
+    id: "web_login",
+    label: "Web — Login Attempt",
+    payload: {
+      event: "web_login",
+      status: "failed",
+      auth_method: "password",
+      host: "app.example.com",
+      user: "admin",
+      source_ip: "192.0.2.99",
+      service: "webapp",
+      ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    },
+  },
+  {
+    id: "firewall",
+    label: "Firewall — Blocked Connection",
+    payload: {
+      event: "firewall_block",
+      status: "failed",
+      host: "fw-edge-01",
+      source_ip: "203.0.113.200",
+      service: "iptables",
+    },
+  },
+  {
+    id: "batch",
+    label: "Batch — Multiple Events",
+    payload: {},
+  },
+];
+
+function UsageExamples({ keys }: { keys: WebhookKeyInfo[] }) {
+  const [selected, setSelected] = useState("ssh_failed");
+  const [copied, setCopied] = useState(false);
+  const [selectedKey, setSelectedKey] = useState("");
+
+  const activeKey = selectedKey || keys[0]?.key || "YOUR_WEBHOOK_KEY";
+  const example = EXAMPLES.find((e) => e.id === selected) ?? EXAMPLES[0];
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : AppConfig.url;
+  const ts = new Date().toISOString();
+
+  let curlBody: string;
+  if (example.id === "batch") {
+    curlBody = JSON.stringify([
+      { ...EXAMPLES[0].payload, timestamp: ts },
+      { ...EXAMPLES[1].payload, timestamp: ts },
+    ], null, 4);
+  } else {
+    curlBody = JSON.stringify({ ...example.payload, timestamp: ts }, null, 4);
+  }
+
+  const curl = `curl -X POST ${baseUrl}/api/webhook \\
+  -H "Content-Type: application/json" \\
+  -H "x-webhook-secret: ${activeKey}" \\
+  -d '${curlBody}'`;
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(curl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-sm">Usage Example</CardTitle>
+          <div className="flex items-center gap-2">
+            {keys.length > 0 && (
+              <Select value={selectedKey || keys[0]?.key} onValueChange={setSelectedKey}>
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <Key className="h-3 w-3 mr-1.5 shrink-0" />
+                  <SelectValue placeholder="Select key" />
+                </SelectTrigger>
+                <SelectContent>
+                  {keys.map((k) => (
+                    <SelectItem key={k.id} value={k.key} className="text-xs">
+                      {k.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Select value={selected} onValueChange={setSelected}>
+              <SelectTrigger className="h-8 w-[200px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EXAMPLES.map((e) => (
+                  <SelectItem key={e.id} value={e.id} className="text-xs">
+                    {e.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="relative">
+          <pre className="rounded-lg bg-muted p-4 text-xs font-mono overflow-x-auto leading-relaxed pr-12">
+            {curl}
+          </pre>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2 h-8 w-8"
+            onClick={handleCopy}
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
