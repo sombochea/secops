@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
   const rows = events.map((e: Record<string, unknown>) => ({
     event: e.event as string,
     status: (e.status as string) ?? null,
+    authMethod: (e.auth_method as string) ?? null,
     host: (e.host as string) ?? null,
     user: (e.user as string) ?? null,
     ruser: (e.ruser as string) ?? null,

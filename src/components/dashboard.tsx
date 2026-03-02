@@ -1,39 +1,70 @@
 "use client";
 
 import useSWR from "swr";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { StatsCards } from "@/components/stats-cards";
 import { EventsTable } from "@/components/events-table";
-import { EventFilters } from "@/components/event-filters";
+import { EventFilters, type Filters } from "@/components/event-filters";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { EventChart } from "@/components/event-chart";
+import { EventCharts } from "@/components/event-charts";
+import { EventDetailSheet } from "@/components/event-detail-sheet";
+import { ActivityTimeline } from "@/components/activity-timeline";
+import { RiskSources } from "@/components/risk-sources";
+import type { SecurityEvent } from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function Dashboard({ userName }: { userName: string }) {
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [eventType, setEventType] = useState("");
+  const [limit, setLimit] = useState(20);
+  const [filters, setFilters] = useState<Filters>({});
+  const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
 
-  const params = new URLSearchParams({ page: String(page), limit: "20" });
-  if (search) params.set("q", search);
-  if (eventType) params.set("event", eventType);
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.event) params.set("event", filters.event);
+  if (filters.host) params.set("host", filters.host);
+  if (filters.source_ip) params.set("source_ip", filters.source_ip);
+  if (filters.user) params.set("user", filters.user);
+  if (filters.service) params.set("service", filters.service);
 
   const { data, isLoading } = useSWR(`/api/events?${params}`, fetcher, {
     refreshInterval: 10000,
+    keepPreviousData: true,
   });
+
+  const handleFilterChange = useCallback((f: Filters) => {
+    setFilters(f);
+    setPage(1);
+  }, []);
+
+  const handleChartClick = useCallback(
+    (key: string, value: string) => {
+      handleFilterChange({ ...filters, [key]: value });
+    },
+    [filters, handleFilterChange]
+  );
 
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader userName={userName} />
-      <main className="mx-auto max-w-7xl p-6 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-6 space-y-6 sm:px-6">
         <StatsCards stats={data?.stats} loading={isLoading} />
-        <EventChart events={data?.events} loading={isLoading} />
+
+        {/* Activity timeline + Risk sources side by side */}
+        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          <ActivityTimeline data={data?.timeline} loading={isLoading} />
+          <RiskSources
+            sources={data?.riskSources}
+            loading={isLoading}
+            onSourceClick={(ip) => handleFilterChange({ ...filters, source_ip: ip })}
+          />
+        </div>
+
+        <EventCharts aggregations={data?.aggregations} loading={isLoading} onSegmentClick={handleChartClick} />
         <EventFilters
-          search={search}
-          onSearchChange={setSearch}
-          eventType={eventType}
-          onEventTypeChange={setEventType}
+          filters={filters}
+          onChange={handleFilterChange}
           eventTypes={data?.eventTypes ?? []}
         />
         <EventsTable
@@ -41,10 +72,14 @@ export function Dashboard({ userName }: { userName: string }) {
           loading={isLoading}
           page={page}
           total={data?.total ?? 0}
-          limit={20}
+          totalPages={data?.totalPages ?? 0}
+          limit={limit}
           onPageChange={setPage}
+          onLimitChange={(l) => { setLimit(l); setPage(1); }}
+          onEventClick={setSelectedEvent}
         />
       </main>
+      <EventDetailSheet event={selectedEvent} onClose={() => setSelectedEvent(null)} />
     </div>
   );
 }

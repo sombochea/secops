@@ -24,7 +24,7 @@ export function DashboardHeader({ userName }: { userName: string }) {
           </div>
           <div>
             <h1 className="text-lg font-semibold leading-none">SecOps Center</h1>
-            <p className="text-xs text-muted-foreground">Security Operations Dashboard</p>
+            <p className="text-xs text-muted-foreground mt-1">Security Operations Dashboard</p>
           </div>
         </div>
         <DropdownMenu>

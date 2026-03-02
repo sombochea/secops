@@ -58,6 +58,7 @@ export const securityEvent = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     event: text("event").notNull(),
     status: text("status"),
+    authMethod: text("auth_method"),
     host: text("host"),
     user: text("user"),
     ruser: text("ruser"),
