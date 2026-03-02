@@ -14,6 +14,7 @@
 - Create a mobile app for on-the-go monitoring and incident response.
 - Implement role-based access control (RBAC) to manage user permissions and access to different features of the dashboard.
 - Implement SecOps Agent: A lightweight agent that can be installed on servers to collect security event data and send it to the SOC dashboard in real-time, providing more comprehensive visibility into security events across the infrastructure.
+- Add ansible playbook to deploy a security monitoring and send to webhook endpoint for the SOC dashboard, making it easier for users to set up and configure their security monitoring infrastructure by one-click deployment of a pre-configured ansible playbook that sets up common security monitoring tools (e.g., fail2ban, logwatch) and configures them to send event data to the SOC dashboard's webhook endpoint.
 
 ### Key Features for the SOC Dashboard
 
