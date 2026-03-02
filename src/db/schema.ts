@@ -91,6 +91,29 @@ export const invitation = pgTable("invitation", {
     .references(() => user.id, { onDelete: "cascade" }),
 });
 
+// ─── Invite links ────────────────────────────────────────────────────────────
+
+export const inviteLink = pgTable(
+  "invite_link",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    role: text("role").notNull().default("member"),
+    email: text("email"),
+    usedBy: text("used_by").references(() => user.id),
+    usedAt: timestamp("used_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [index("idx_invite_token").on(table.token)]
+);
+
 // ─── Team webhook keys ───────────────────────────────────────────────────────
 
 export const webhookKey = pgTable(
