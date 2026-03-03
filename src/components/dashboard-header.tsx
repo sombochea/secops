@@ -30,6 +30,9 @@ const NAV_ITEMS = [
   { href: "/flowmap", label: "FlowMap", icon: Workflow },
   { href: "/uba", label: "UBA", icon: Activity },
   { href: "/cyberkiller", label: "CyberKiller", icon: Crosshair },
+];
+
+const PROFILE_ITEMS = [
   { href: "/playbook", label: "Playbook", icon: BookOpen },
   { href: "/training", label: "Training", icon: GraduationCap },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -74,6 +77,24 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
               </SheetHeader>
               <nav className="flex flex-col py-2">
                 {NAV_ITEMS.map((item) => {
+                  const active = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-2.5 text-sm transition-colors",
+                        active ? "bg-muted text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+                <div className="my-1 mx-4 border-t" />
+                {PROFILE_ITEMS.map((item) => {
                   const active = pathname === item.href;
                   return (
                     <Link
@@ -189,6 +210,12 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {PROFILE_ITEMS.map((item) => (
+                <DropdownMenuItem key={item.href} asChild>
+                  <Link href={item.href}><item.icon className="mr-2 h-4 w-4" />{item.label}</Link>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onAboutClick}><Info className="mr-2 h-4 w-4" />About</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setSignOutOpen(true)}><LogOut className="mr-2 h-4 w-4" />Sign out</DropdownMenuItem>
