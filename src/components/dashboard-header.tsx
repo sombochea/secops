@@ -15,7 +15,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings,
-  Building2, Check, ChevronsUpDown, Crosshair, Clock, Search, Menu, Workflow, Activity,
+  Building2, Check, ChevronsUpDown, Crosshair, Clock, Search, Menu, Workflow, Activity, GraduationCap,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -31,6 +31,7 @@ const NAV_ITEMS = [
   { href: "/uba", label: "UBA", icon: Activity },
   { href: "/cyberkiller", label: "CyberKiller", icon: Crosshair },
   { href: "/playbook", label: "Playbook", icon: BookOpen },
+  { href: "/training", label: "Training", icon: GraduationCap },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
