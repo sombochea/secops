@@ -1,3 +1,8 @@
+### Critical
+
+- [ ] Leak all organizations when user registered first time in setup wizard (or select existing).
+- Improve after logged in, no need to show setup wizard again, just show dashboard with default organization selected, and allow user to switch organization from the dashboard (if not select any, select the default or last used or first organization).
+
 ### Brainstorming
 
 - [x] Add geolocation data to events based on source IP addresses and display this information on the dashboard, including a world map visualization showing the geographic distribution of security events.
