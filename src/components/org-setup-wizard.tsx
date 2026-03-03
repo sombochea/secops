@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,9 +20,15 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [existingKeys, setExistingKeys] = useState(0);
+  const [allOrgs, setAllOrgs] = useState<{ id: string; name: string; slug: string }[]>([]);
 
-  // Check if user already has orgs they can activate
-  const { data: orgs } = authClient.useListOrganizations();
+  // Fetch organizations the user is a member of (via invites)
+  useEffect(() => {
+    fetch("/api/organizations")
+      .then((r) => r.json())
+      .then((d) => setAllOrgs(d.organizations ?? []))
+      .catch(() => {});
+  }, []);
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,8 +48,9 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
 
   const handleSelectOrg = async (orgId: string) => {
     setLoading(true);
+    setError("");
+    // Set active — Better Auth will add user as member if not already
     await authClient.organization.setActive({ organizationId: orgId });
-    // Check if org already has webhook keys
     const res = await fetch("/api/webhook-keys").then((r) => r.json()).catch(() => ({ keys: [] }));
     const count = res.keys?.length ?? 0;
     setExistingKeys(count);
@@ -80,7 +87,6 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
-        {/* Header */}
         <div className="text-center space-y-2">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
             <Shield className="h-7 w-7" />
@@ -91,7 +97,6 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
           </p>
         </div>
 
-        {/* Steps indicator */}
         <div className="flex items-center justify-center gap-2">
           {[
             { key: "org", label: "Organization" },
@@ -106,31 +111,18 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
               <div key={s.key} className="flex items-center gap-2">
                 {i > 0 && <div className="h-px w-8 bg-border" />}
                 <div className="flex items-center gap-1.5">
-                  <div
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                      isDone
-                        ? "bg-emerald-500 text-white"
-                        : isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                    }`}
-                  >
+                  <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${isDone ? "bg-emerald-500 text-white" : isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                     {isDone ? <Check className="h-3 w-3" /> : i + 1}
                   </div>
-                  <span className={`text-xs ${isActive ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                    {s.label}
-                  </span>
+                  <span className={`text-xs ${isActive ? "text-foreground font-medium" : "text-muted-foreground"}`}>{s.label}</span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {error && (
-          <p className="text-sm text-destructive text-center">{error}</p>
-        )}
+        {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
-        {/* Step 1: Create or select org */}
         {step === "org" && (
           <Card>
             <CardHeader>
@@ -139,35 +131,15 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
                 Set Up Organization
               </CardTitle>
               <CardDescription>
-                Create an organization to scope your security events and collaborate with your team.
+                Join an organization you&apos;ve been invited to, or create a new one.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <form onSubmit={handleCreateOrg} className="space-y-3">
-                <Input
-                  placeholder="Organization name"
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  required
-                />
-                <Button type="submit" className="w-full gap-1.5" disabled={loading || !orgName.trim()}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  Create &amp; Continue
-                </Button>
-              </form>
-
-              {!!orgs?.length && (
+              {/* Show all existing orgs first */}
+              {allOrgs.length > 0 && (
                 <>
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs">
-                      <span className="bg-card px-2 text-muted-foreground">or select existing</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {orgs.map((org) => (
+                  <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                    {allOrgs.map((org) => (
                       <button
                         key={org.id}
                         className="flex w-full items-center justify-between rounded-lg border p-3 text-left hover:bg-muted/50 transition-colors"
@@ -183,43 +155,41 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
                       </button>
                     ))}
                   </div>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="bg-card px-2 text-muted-foreground">or create new</span>
+                    </div>
+                  </div>
                 </>
               )}
+
+              <form onSubmit={handleCreateOrg} className="space-y-3">
+                <Input placeholder="Organization name" value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
+                <Button type="submit" className="w-full gap-1.5" disabled={loading || !orgName.trim()}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  Create &amp; Continue
+                </Button>
+              </form>
             </CardContent>
           </Card>
         )}
 
-        {/* Step 2: Create webhook key */}
         {step === "webhook" && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Key className="h-5 w-5" />
-                Create Webhook Key
-              </CardTitle>
-              <CardDescription>
-                Generate a webhook key to start ingesting security events from your servers.
-              </CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Key className="h-5 w-5" />Create Webhook Key</CardTitle>
+              <CardDescription>Generate a webhook key to start ingesting security events.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleCreateKey} className="space-y-3">
-                <Input
-                  placeholder="Key name (e.g., prod-server-01)"
-                  value={keyName}
-                  onChange={(e) => setKeyName(e.target.value)}
-                  required
-                />
+                <Input placeholder="Key name (e.g., prod-server-01)" value={keyName} onChange={(e) => setKeyName(e.target.value)} required />
                 <Button type="submit" className="w-full gap-1.5" disabled={loading}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
                   Generate Key
                 </Button>
                 {existingKeys > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full text-muted-foreground"
-                    onClick={() => { window.location.href = "/"; }}
-                  >
+                  <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={() => { window.location.href = "/"; }}>
                     Skip — already have {existingKeys} {existingKeys === 1 ? "key" : "keys"}
                   </Button>
                 )}
@@ -228,31 +198,22 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
           </Card>
         )}
 
-        {/* Step 3: Done */}
         {step === "done" && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Check className="h-5 w-5 text-emerald-500" />
-                You&apos;re All Set!
-              </CardTitle>
-              <CardDescription>
-                Your webhook key is ready. Use it to send security events.
-              </CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Check className="h-5 w-5 text-emerald-500" />You&apos;re All Set!</CardTitle>
+              <CardDescription>Your webhook key is ready. Use it to send security events.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border p-3 space-y-2">
                 <p className="text-xs text-muted-foreground">Your webhook key:</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs font-mono bg-muted rounded px-2 py-1.5 break-all">
-                    {webhookKey}
-                  </code>
+                  <code className="flex-1 text-xs font-mono bg-muted rounded px-2 py-1.5 break-all">{webhookKey}</code>
                   <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={handleCopy}>
                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               </div>
-
               <div className="rounded-lg bg-muted p-3">
                 <p className="text-xs text-muted-foreground mb-2">Send a test event:</p>
                 <pre className="text-[11px] font-mono overflow-x-auto leading-relaxed">
@@ -260,16 +221,13 @@ export function OrgSetupWizard({ userName }: { userName: string }) {
   -H "Content-Type: application/json" \\
   -H "x-webhook-secret: ${webhookKey}" \\
   -d '{"event":"ssh_attempt","status":"failed",
-  "auth_method":"invalid_user","host":"server-01",
-  "user":"root","source_ip":"203.0.113.42",
-  "service":"sshd",
+  "host":"server-01","user":"root",
+  "source_ip":"203.0.113.42","service":"sshd",
   "timestamp":"${new Date().toISOString()}"}'`}
                 </pre>
               </div>
-
               <Button className="w-full gap-1.5" onClick={() => window.location.href = "/"}>
-                <ArrowRight className="h-4 w-4" />
-                Go to Dashboard
+                <ArrowRight className="h-4 w-4" />Go to Dashboard
               </Button>
             </CardContent>
           </Card>

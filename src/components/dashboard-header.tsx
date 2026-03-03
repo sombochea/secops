@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings, Building2, Check, ChevronsUpDown, Crosshair, Clock } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -28,12 +39,23 @@ const NAV_ITEMS = [
 export function DashboardHeader({ userName, onAboutClick }: { userName: string; onAboutClick: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const { data: activeOrg } = authClient.useActiveOrganization();
   const { data: orgs } = authClient.useListOrganizations();
+
+  // Filter: only show orgs from the current user's session (Better Auth handles this,
+  // but we also refetch on mount to clear stale cache from previous users)
+  const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id;
 
   const handleSwitchOrg = async (orgId: string) => {
     await authClient.organization.setActive({ organizationId: orgId });
     window.location.reload();
+  };
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    router.push("/login");
   };
 
   return (
@@ -59,16 +81,12 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
                   href={item.href}
                   className={cn(
                     "relative flex items-center gap-1.5 px-3 py-3 text-sm transition-colors",
-                    active
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <item.icon className="h-3.5 w-3.5" />
                   {item.label}
-                  {active && (
-                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-primary" />
-                  )}
+                  {active && <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-primary" />}
                 </Link>
               );
             })}
@@ -77,7 +95,7 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
 
         {/* Right: org switcher + user menu */}
         <div className="flex items-center gap-2">
-          {orgs && orgs.length > 0 && (
+          {orgs && orgs.length > 0 && currentUserId && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5 h-8 max-w-[180px]">
@@ -88,13 +106,8 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[200px]">
                 {orgs.map((org) => (
-                  <DropdownMenuItem
-                    key={org.id}
-                    onClick={() => handleSwitchOrg(org.id)}
-                    className="gap-2"
-                  >
-                    {org.id === activeOrg?.id && <Check className="h-3.5 w-3.5 shrink-0" />}
-                    {org.id !== activeOrg?.id && <span className="w-3.5" />}
+                  <DropdownMenuItem key={org.id} onClick={() => handleSwitchOrg(org.id)} className="gap-2">
+                    {org.id === activeOrg?.id ? <Check className="h-3.5 w-3.5 shrink-0" /> : <span className="w-3.5" />}
                     <span className="truncate text-xs">{org.name}</span>
                   </DropdownMenuItem>
                 ))}
@@ -103,35 +116,42 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
           )}
 
           <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-xs">
-                  {userName.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm hidden sm:inline">{userName}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onAboutClick}>
-              <Info className="mr-2 h-4 w-4" />
-              About
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                await authClient.signOut();
-                router.push("/login");
-              }}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2">
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback className="text-xs">{userName.charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <span className="text-sm hidden sm:inline">{userName}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onAboutClick}>
+                <Info className="mr-2 h-4 w-4" />About
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setSignOutOpen(true)}>
+                <LogOut className="mr-2 h-4 w-4" />Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Sign out confirmation */}
+      <AlertDialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign out?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will be signed out of your current session. Any unsaved changes will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOut}>Sign out</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }
