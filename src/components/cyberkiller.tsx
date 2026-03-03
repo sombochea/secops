@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip as RTooltip, Legend, CartesianGrid } from 'recharts';
 import {
     Shield,
@@ -646,7 +645,13 @@ export function CyberKillerView() {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [compareHours, setCompareHours] = useState("24");
-    const [flowIp, setFlowIp] = useState<string | null>(null);
+    const [flowIps, setFlowIps] = useState<string[]>([]);
+    const openFlow = useCallback((ip: string) => {
+        setFlowIps((prev) => prev.includes(ip) ? prev : [...prev, ip]);
+    }, []);
+    const closeFlow = useCallback((ip: string) => {
+        setFlowIps((prev) => prev.filter((i) => i !== ip));
+    }, []);
     const containerRef = useRef<HTMLDivElement>(null);
 
     const [apiUrl] = useState(() => {
@@ -793,7 +798,7 @@ export function CyberKillerView() {
                 {/* Left: live feed + map */}
                 <div className="border-r border-border/50 overflow-hidden flex flex-col">
                     <div className="flex-1 overflow-hidden">
-                        <LiveFeed events={events} tz={timezone} portalContainer={containerRef.current} onVisualize={setFlowIp} />
+                        <LiveFeed events={events} tz={timezone} portalContainer={containerRef.current} onVisualize={openFlow} />
                     </div>
                     <div className="h-[250px] shrink-0 border-t border-border/50">
                         <CyberKillerMap points={geoPoints} />
@@ -807,7 +812,7 @@ export function CyberKillerView() {
                     ) : (
                         <>
                             <div className="flex-1 overflow-hidden border-b border-border/50">
-                                <AttackerBoard sources={riskSources} onVisualize={setFlowIp} />
+                                <AttackerBoard sources={riskSources} onVisualize={openFlow} />
                             </div>
                             <div className="h-[180px] shrink-0">
                                 <MiniTimeline data={timeline} />
@@ -817,21 +822,64 @@ export function CyberKillerView() {
                 </div>
             </div>
 
-            {/* Flow visualization overlay */}
-            <FlowOverlay ip={flowIp} onClose={() => setFlowIp(null)} container={containerRef.current} />
+            {/* Flow visualization windows */}
+            {flowIps.map((ip, idx) => (
+                <FlowWindow key={ip} ip={ip} index={idx} onClose={() => closeFlow(ip)} />
+            ))}
         </div>
     );
 }
 
 // ─── Flow Overlay Dialog ─────────────────────────────────────────────────────
 
-function FlowOverlay({ ip, onClose, container }: { ip: string | null; onClose: () => void; container?: HTMLElement | null }) {
+// ─── Floating Flow Window (multi-window, draggable) ──────────────────────────
+
+function FlowWindow({ ip, index, onClose }: { ip: string; index: number; onClose: () => void }) {
+    const [GraphComp, setGraphComp] = useState<typeof import('@/components/security-graph').SecurityGraph | null>(null);
+    const [pos, setPos] = useState({ x: 40 + index * 30, y: 40 + index * 30 });
+    const [size, setSize] = useState({ w: Math.min(window.innerWidth - 80, 1100), h: Math.min(window.innerHeight - 80, 700) });
+    const [dragging, setDragging] = useState(false);
+    const [resizing, setResizing] = useState(false);
+    const dragStart = useRef({ mx: 0, my: 0, x: 0, y: 0, w: 0, h: 0 });
+    const [zBump, setZBump] = useState(index);
+
+    useEffect(() => {
+        import('@/components/security-graph').then((m) => setGraphComp(() => m.SecurityGraph));
+    }, []);
+
     const { data, isLoading } = useSWR(
-        ip ? `/api/events/graph?hours=24&limit=500&topN=20&ip=${encodeURIComponent(ip)}` : null,
+        `/api/events/graph?hours=24&limit=500&topN=20&ip=${encodeURIComponent(ip)}`,
         fetcher,
     );
 
-    if (!ip) return null;
+    const onDragStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setDragging(true);
+        setZBump(Date.now());
+        dragStart.current = { mx: e.clientX, my: e.clientY, x: pos.x, y: pos.y, w: size.w, h: size.h };
+    }, [pos, size]);
+
+    const onResizeStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setResizing(true);
+        setZBump(Date.now());
+        dragStart.current = { mx: e.clientX, my: e.clientY, x: pos.x, y: pos.y, w: size.w, h: size.h };
+    }, [pos, size]);
+
+    useEffect(() => {
+        if (!dragging && !resizing) return;
+        const onMove = (e: MouseEvent) => {
+            const dx = e.clientX - dragStart.current.mx;
+            const dy = e.clientY - dragStart.current.my;
+            if (dragging) setPos({ x: dragStart.current.x + dx, y: dragStart.current.y + dy });
+            if (resizing) setSize({ w: Math.max(400, dragStart.current.w + dx), h: Math.max(300, dragStart.current.h + dy) });
+        };
+        const onUp = () => { setDragging(false); setResizing(false); };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    }, [dragging, resizing]);
 
     const detail = data?.detail as {
         ip: string; totalEvents: number; threats: number; maxRisk: number;
@@ -840,142 +888,90 @@ function FlowOverlay({ ip, onClose, container }: { ip: string | null; onClose: (
         services: Record<string, number>; eventTypes: Record<string, number>;
     } | null;
 
-    const nodes = (data?.nodes ?? []) as { id: string; type: string; label: string; count: number; threats: number; riskMax: number; country?: string }[];
-    const edges = (data?.edges ?? []) as { source: string; target: string; count: number; threats: number }[];
+    const apiNodes = data?.nodes ?? [];
+    const apiEdges = data?.edges ?? [];
 
     return (
-        <Dialog open={!!ip} onOpenChange={(open) => { if (!open) onClose(); }}>
-            <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 gap-0" container={container}>
-                <DialogHeader className="px-4 py-3 border-b shrink-0">
-                    <DialogTitle className="flex items-center gap-2 text-sm">
-                        <Workflow className="h-4 w-4 text-blue-500" />
-                        Attack Paths — <span className="font-mono text-blue-400">{ip}</span>
-                        {detail && (
-                            <span className="text-xs text-muted-foreground font-normal ml-2">
-                                {[detail.city, detail.country].filter(Boolean).join(', ') || 'Unknown'}
-                            </span>
-                        )}
-                    </DialogTitle>
-                </DialogHeader>
+        <div
+            className="fixed rounded-lg border border-border bg-background shadow-2xl flex flex-col overflow-hidden"
+            style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: 100 + zBump % 1000 }}
+            onMouseDown={() => setZBump(Date.now())}
+        >
+            {/* Title bar — draggable */}
+            <div
+                className="flex items-center justify-between px-3 py-2 border-b bg-card cursor-move shrink-0 select-none"
+                onMouseDown={onDragStart}
+            >
+                <div className="flex items-center gap-2 text-sm min-w-0">
+                    <Workflow className="h-4 w-4 text-blue-500 shrink-0" />
+                    <span className="font-semibold truncate">Attack Paths</span>
+                    <span className="font-mono text-blue-400 truncate">{ip}</span>
+                    {detail && <span className="text-xs text-muted-foreground truncate hidden sm:inline">{[detail.city, detail.country].filter(Boolean).join(', ')}</span>}
+                </div>
+                <button onClick={onClose} className="shrink-0 ml-2 rounded p-1 hover:bg-muted transition-colors">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+            </div>
 
-                {isLoading ? (
-                    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>
-                ) : (
-                    <div className="flex-1 flex overflow-hidden">
-                        {/* Graph visualization */}
-                        <div className="flex-1 overflow-y-auto p-4">
-                            {nodes.length === 0 ? (
-                                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">No data for this IP in the last 24h</div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {/* Stats row */}
-                                    {detail && (
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                            <div className="rounded border border-border/50 bg-card/50 p-2 text-center">
-                                                <div className="text-lg font-bold tabular-nums">{detail.totalEvents}</div>
-                                                <div className="text-[9px] text-muted-foreground uppercase">Events</div>
-                                            </div>
-                                            <div className="rounded border border-red-500/30 bg-red-500/5 p-2 text-center">
-                                                <div className="text-lg font-bold tabular-nums text-red-400">{detail.threats}</div>
-                                                <div className="text-[9px] text-muted-foreground uppercase">Threats</div>
-                                            </div>
-                                            <div className="rounded border border-border/50 bg-card/50 p-2 text-center">
-                                                <div className="text-lg font-bold tabular-nums">{detail.maxRisk}</div>
-                                                <div className="text-[9px] text-muted-foreground uppercase">Max Risk</div>
-                                            </div>
-                                            <div className="rounded border border-border/50 bg-card/50 p-2 text-center">
-                                                <div className="text-lg font-bold tabular-nums">{Object.keys(detail.targetHosts).length}</div>
-                                                <div className="text-[9px] text-muted-foreground uppercase">Targets</div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Visual node graph */}
-                                    <div className="space-y-2">
-                                        {(['ip', 'user', 'host', 'service'] as const).map((type) => {
-                                            const group = nodes.filter((n) => n.type === type);
-                                            if (!group.length) return null;
-                                            const colors = { ip: 'text-blue-500 border-blue-500/30', user: 'text-purple-500 border-purple-500/30', host: 'text-emerald-500 border-emerald-500/30', service: 'text-cyan-500 border-cyan-500/30' };
-                                            const icons = { ip: Globe, user: Users, host: Server, service: Zap };
-                                            const TypeIcon = icons[type];
-                                            return (
-                                                <div key={type}>
-                                                    <div className="flex items-center gap-1.5 mb-1">
-                                                        <TypeIcon className={`h-3 w-3 ${colors[type].split(' ')[0]}`} />
-                                                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{type}s</span>
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {group.sort((a, b) => b.threats - a.threats || b.count - a.count).map((n) => (
-                                                            <div key={n.id} className={`rounded border px-2 py-1 text-xs ${n.threats > 0 ? 'border-red-500/40 bg-red-500/5' : `${colors[type].split(' ')[1]} bg-card/50`}`}>
-                                                                <span className="font-mono">{n.label}</span>
-                                                                <span className="text-[9px] text-muted-foreground ml-1.5">{n.count}</span>
-                                                                {n.threats > 0 && <span className="text-[9px] text-red-400 ml-1">⚠{n.threats}</span>}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {/* Connections */}
-                                    {edges.length > 0 && (
-                                        <div>
-                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Connections ({edges.length})</div>
-                                            <div className="space-y-0.5 max-h-[150px] overflow-y-auto">
-                                                {edges.sort((a, b) => b.threats - a.threats || b.count - a.count).slice(0, 30).map((e, i) => (
-                                                    <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
-                                                        <span className="truncate">{e.source.split(':')[1]}</span>
-                                                        <span className={e.threats > 0 ? 'text-red-400' : 'text-muted-foreground'}>→</span>
-                                                        <span className="truncate">{e.target.split(':')[1]}</span>
-                                                        <span className="text-muted-foreground ml-auto shrink-0">{e.count}×</span>
-                                                        {e.threats > 0 && <span className="text-red-400 shrink-0">⚠{e.threats}</span>}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Side detail */}
-                        {detail && (
-                            <div className="w-[220px] border-l overflow-y-auto p-3 space-y-3 shrink-0 hidden sm:block">
-                                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Timeline</div>
-                                <div className="text-xs space-y-0.5">
-                                    <div className="flex justify-between"><span className="text-muted-foreground">First</span><span>{formatRelative(detail.firstSeen)}</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Last</span><span>{formatRelative(detail.lastSeen)}</span></div>
-                                </div>
-                                {Object.entries(detail.targetHosts).length > 0 && (
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Hosts</div>
-                                        {Object.entries(detail.targetHosts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([h, c]) => (
-                                            <div key={h} className="flex justify-between text-[11px] py-0.5"><span className="font-mono truncate mr-1">{h}</span><span className="text-muted-foreground shrink-0">{c}</span></div>
-                                        ))}
-                                    </div>
-                                )}
-                                {Object.entries(detail.eventTypes).length > 0 && (
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Events</div>
-                                        {Object.entries(detail.eventTypes).sort((a, b) => b[1] - a[1]).map(([t, c]) => (
-                                            <div key={t} className="flex justify-between text-[11px] py-0.5"><span className="font-mono truncate mr-1">{t}</span><span className="text-muted-foreground shrink-0">{c}</span></div>
-                                        ))}
-                                    </div>
-                                )}
-                                {Object.entries(detail.services).length > 0 && (
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Services</div>
-                                        {Object.entries(detail.services).sort((a, b) => b[1] - a[1]).map(([s, c]) => (
-                                            <div key={s} className="flex justify-between text-[11px] py-0.5"><span className="font-mono truncate mr-1">{s}</span><span className="text-muted-foreground shrink-0">{c}</span></div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
+            {/* Content */}
+            {isLoading || !GraphComp ? (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>
+            ) : apiNodes.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No data for this IP in the last 24h</div>
+            ) : (
+                <div className="flex-1 flex overflow-hidden">
+                    <div className="flex-1 relative">
+                        <GraphComp apiNodes={apiNodes} apiEdges={apiEdges} minimap={false} />
                     </div>
-                )}
-            </DialogContent>
-        </Dialog>
+                    {detail && (
+                        <div className="w-[200px] border-l overflow-y-auto p-2.5 space-y-2.5 shrink-0 text-[11px] hidden md:block">
+                            <div className="grid grid-cols-2 gap-1 text-center">
+                                <div className="rounded border border-border/50 bg-card/50 p-1">
+                                    <div className="text-sm font-bold tabular-nums">{detail.totalEvents}</div>
+                                    <div className="text-[8px] text-muted-foreground uppercase">Events</div>
+                                </div>
+                                <div className="rounded border border-red-500/30 bg-red-500/5 p-1">
+                                    <div className="text-sm font-bold tabular-nums text-red-400">{detail.threats}</div>
+                                    <div className="text-[8px] text-muted-foreground uppercase">Threats</div>
+                                </div>
+                            </div>
+                            <div className="space-y-0.5">
+                                <div className="flex justify-between"><span className="text-muted-foreground">Risk</span><span className={detail.maxRisk >= 70 ? 'text-red-400' : ''}>{detail.maxRisk}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">First</span><span>{formatRelative(detail.firstSeen)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Last</span><span>{formatRelative(detail.lastSeen)}</span></div>
+                            </div>
+                            <FlowSection title="Hosts" data={detail.targetHosts} />
+                            <FlowSection title="Users" data={detail.targetUsers} />
+                            <FlowSection title="Events" data={detail.eventTypes} />
+                            <FlowSection title="Services" data={detail.services} />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Resize handle */}
+            <div
+                className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+                onMouseDown={onResizeStart}
+            >
+                <svg className="w-4 h-4 text-muted-foreground/50" viewBox="0 0 16 16"><path d="M14 14L8 14M14 14L14 8M14 14L6 6" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
+            </div>
+        </div>
+    );
+}
+
+function FlowSection({ title, data }: { title: string; data: Record<string, number> }) {
+    const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) return null;
+    return (
+        <div>
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">{title}</div>
+            {entries.slice(0, 6).map(([k, v]) => (
+                <div key={k} className="flex justify-between py-0.5">
+                    <span className="font-mono truncate mr-1">{k}</span>
+                    <span className="text-muted-foreground shrink-0">{v}</span>
+                </div>
+            ))}
+        </div>
     );
 }
