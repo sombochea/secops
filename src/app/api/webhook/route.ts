@@ -25,9 +25,14 @@ export async function POST(req: NextRequest) {
 
   const rows = [];
   for (const e of events) {
+    const ts = new Date(e.timestamp as string);
+    if (isNaN(ts.getTime())) {
+      console.warn("[webhook] skipping event with invalid timestamp:", e.timestamp);
+      continue;
+    }
     const parsed = {
       organizationId: wk.organizationId,
-      event: e.event as string,
+      event: (e.event as string) || "unknown",
       status: (e.status as string) ?? null,
       authMethod: (e.auth_method as string) ?? null,
       host: (e.host as string) ?? null,
@@ -39,7 +44,7 @@ export async function POST(req: NextRequest) {
       pamType: (e.pam_type as string) ?? null,
       ua: (e.ua as string) ?? null,
       metadata: e.metadata ?? null,
-      timestamp: new Date(e.timestamp as string),
+      timestamp: ts,
     };
 
     const geo = parsed.sourceIp ? geoMap.get(parsed.sourceIp) : undefined;
@@ -54,6 +59,10 @@ export async function POST(req: NextRequest) {
       riskScore,
       status: parsed.status === "failed" ? "failed" : isSuspicious(riskScore) ? "suspicious" : parsed.status,
     });
+  }
+
+  if (rows.length === 0) {
+    return NextResponse.json({ received: 0, organizationId: wk.organizationId });
   }
 
   const inserted = await db.insert(securityEvent).values(rows).returning({ id: securityEvent.id });
