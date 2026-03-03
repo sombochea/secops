@@ -26,7 +26,7 @@ export default function RegisterPage() {
       setError(error.message ?? "Registration failed");
       setLoading(false);
     } else {
-      router.push("/");
+      window.location.href = "/";
     }
   };
 

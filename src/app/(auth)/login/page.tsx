@@ -25,7 +25,7 @@ export default function LoginPage() {
       setError(error.message ?? "Login failed");
       setLoading(false);
     } else {
-      router.push("/");
+      window.location.href = "/";
     }
   };
 

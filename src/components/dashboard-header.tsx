@@ -55,7 +55,7 @@ export function DashboardHeader({ userName, onAboutClick }: { userName: string; 
 
   const handleSignOut = async () => {
     await authClient.signOut();
-    router.push("/login");
+    window.location.href = "/login";
   };
 
   return (

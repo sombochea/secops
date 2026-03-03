@@ -1,7 +1,7 @@
 ### Critical
 
 - [x] Leak all organizations when user registered first time in setup wizard (or select existing).
-- Improve after logged in, no need to show setup wizard again, just show dashboard with default organization selected, and allow user to switch organization from the dashboard (if not select any, select the default or last used or first organization).
+- [x] Improve after logged in, no need to show setup wizard again, just show dashboard with default organization selected, and allow user to switch organization from the dashboard (if not select any, select the default or last used or first organization).
 
 ### Brainstorming
 
