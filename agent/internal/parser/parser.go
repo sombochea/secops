@@ -120,15 +120,33 @@ func ParseJSON(line, host string) *Event {
 	} else {
 		ev.Event = "json_event"
 	}
-	if v, ok := raw["status"].(string); ok { ev.Status = v }
-	if v, ok := raw["user"].(string); ok { ev.User = v }
-	if v, ok := raw["source_ip"].(string); ok { ev.SourceIP = v }
-	if v, ok := raw["ip"].(string); ok && ev.SourceIP == "" { ev.SourceIP = v }
-	if v, ok := raw["service"].(string); ok { ev.Service = v }
-	if v, ok := raw["host"].(string); ok && host == "" { ev.Host = v }
-	if v, ok := raw["auth_method"].(string); ok { ev.AuthMethod = v }
-	if v, ok := raw["timestamp"].(string); ok { ev.Timestamp = v }
-	if v, ok := raw["ua"].(string); ok { ev.UA = v }
+	if v, ok := raw["status"].(string); ok {
+		ev.Status = v
+	}
+	if v, ok := raw["user"].(string); ok {
+		ev.User = v
+	}
+	if v, ok := raw["source_ip"].(string); ok {
+		ev.SourceIP = v
+	}
+	if v, ok := raw["ip"].(string); ok && ev.SourceIP == "" {
+		ev.SourceIP = v
+	}
+	if v, ok := raw["service"].(string); ok {
+		ev.Service = v
+	}
+	if v, ok := raw["host"].(string); ok && host == "" {
+		ev.Host = v
+	}
+	if v, ok := raw["auth_method"].(string); ok {
+		ev.AuthMethod = v
+	}
+	if v, ok := raw["timestamp"].(string); ok {
+		ev.Timestamp = v
+	}
+	if v, ok := raw["ua"].(string); ok {
+		ev.UA = v
+	}
 	return ev
 }
 
@@ -156,7 +174,9 @@ func ParseCSV(line, host string, headers []string) *Event {
 		case "source_ip", "ip":
 			ev.SourceIP = v
 		case "host":
-			if host == "" { ev.Host = v }
+			if host == "" {
+				ev.Host = v
+			}
 		case "service":
 			ev.Service = v
 		case "timestamp":
@@ -173,7 +193,7 @@ func ParseCSV(line, host string, headers []string) *Event {
 
 // --- Nginx ---
 // Combined log: 1.2.3.4 - user [02/Jan/2006:15:04:05 +0000] "GET /path HTTP/1.1" 200 1234 "ref" "ua"
-var nginxRe = regexp.MustCompile(`^([\d.]+)\s+-\s+(\S+)\s+\[([^\]]+)\]\s+"(\S+)\s+(\S+)\s+\S+"\s+(\d+)\s+\d+\s+"[^"]*"\s+"([^"]*)"`)
+var nginxRe = regexp.MustCompile(`^([\da-fA-F.:]+)\s+-\s+(\S+)\s+\[([^\]]+)\]\s+"(\S+)\s+(\S+)\s+\S+"\s+(\d+)\s+\d+\s+"[^"]*"\s+"([^"]*)"`)
 
 func ParseNginx(line, host string) *Event {
 	m := nginxRe.FindStringSubmatch(line)
@@ -191,15 +211,15 @@ func ParseNginx(line, host string) *Event {
 		user = ""
 	}
 	return &Event{
-		Event:    "http_" + strings.ToLower(m[4]),
-		Status:   status,
-		Host:     host,
-		User:     user,
-		SourceIP: m[1],
-		Service:  "nginx",
-		UA:       m[7],
+		Event:     "http_" + strings.ToLower(m[4]),
+		Status:    status,
+		Host:      host,
+		User:      user,
+		SourceIP:  m[1],
+		Service:   "nginx",
+		UA:        m[7],
 		Timestamp: ts.UTC().Format(time.RFC3339),
-		Metadata: map[string]string{"path": m[5], "status_code": code},
+		Metadata:  map[string]string{"path": m[5], "status_code": code},
 	}
 }
 

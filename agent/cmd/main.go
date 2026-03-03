@@ -51,7 +51,6 @@ func main() {
 	lines := make(chan taggedLine, 1000)
 
 	for _, src := range cfg.Sources {
-		src := src
 		var csvHeaders []string
 		if src.Format == "csv" {
 			csvHeaders = readCSVHeaders(src.Path)
