@@ -56,21 +56,70 @@ sources:
   # Use Go regex syntax. Named groups are mapped to event fields via the mapping section.
   # Any mapped field not in the standard set becomes metadata.
   #
-  # Example: parsing a custom firewall log like:
+  # Standard fields you can map to:
+  #   status, user, source_ip, service, auth_method, timestamp, ua, ruser, tty, pam_type
+  # Anything else becomes metadata key-value pairs.
+  #
+  # event value: static string OR "{{group_name}}" to use a captured group.
+  #
+  # See agent/custom-format-examples.yaml for ready-to-use patterns.
+
+  # Example 1 — Custom firewall log:
   #   2024-01-15 10:30:00 DENY 203.0.113.42 -> 10.0.0.1:22 proto=tcp
   #
   # - path: /var/log/firewall.log
   #   format: custom
   #   format_parser:
   #     pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>ALLOW|DENY) (?P<src>[\d.]+) -> (?P<dst>[\d.:]+) proto=(?P<proto>\w+)'
-  #     event: "firewall_{{action}}"
+  #     event: "firewall_event"
   #     mapping:
   #       timestamp: ts
   #       source_ip: src
-  #       status: action          # DENY -> status field
-  #       destination: dst        # not a standard field -> goes to metadata
-  #       protocol: proto         # not a standard field -> goes to metadata
+  #       status: action
+  #       destination: dst
+  #       protocol: proto
+
+  # Example 2 — Apache combined access log:
+  #   203.0.113.42 - frank [10/Oct/2000:13:55:36 -0700] "GET /index.html HTTP/1.1" 200 2326 "-" "Mozilla/5.0"
   #
-  # Standard fields you can map to:
-  #   status, user, source_ip, service, auth_method, timestamp, ua, ruser, tty, pam_type
-  # Anything else becomes metadata key-value pairs.
+  # - path: /var/log/apache2/access.log
+  #   format: custom
+  #   format_parser:
+  #     pattern: '^(?P<ip>[\d.]+) \S+ (?P<user>\S+) \[(?P<ts>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<code>\d+) \d+ "[^"]*" "(?P<ua>[^"]*)"'
+  #     event: "http_request"
+  #     mapping:
+  #       source_ip: ip
+  #       user: user
+  #       timestamp: ts
+  #       ua: ua
+  #       method: method
+  #       path: path
+  #       status_code: code
+
+  # Example 3 — HAProxy TCP log:
+  #   Jan  3 12:00:00 haproxy[1234]: 203.0.113.42:54321 [03/Jan/2026:12:00:00.000] frontend backend/server 0/0/1/2/3 200 512 - - ---- 10/5/2/1/0 0/0 "GET / HTTP/1.1"
+  #
+  # - path: /var/log/haproxy.log
+  #   format: custom
+  #   format_parser:
+  #     pattern: '(?P<ts>\w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2}) haproxy\[\d+\]: (?P<src>[\d.]+):\d+ \[.*?\] (?P<fe>\S+) (?P<be>\S+) [\d/]+ (?P<code>\d+)'
+  #     event: "haproxy_request"
+  #     mapping:
+  #       timestamp: ts
+  #       source_ip: src
+  #       status_code: code
+  #       frontend: fe
+  #       backend: be
+
+  # Example 4 — Fail2ban action log:
+  #   2026-01-15 10:30:00,123 fail2ban.actions [INFO] [sshd] Ban 203.0.113.42
+  #
+  # - path: /var/log/fail2ban.log
+  #   format: custom
+  #   format_parser:
+  #     pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ fail2ban\.\w+ \[\w+\] \[(?P<jail>\w+)\] (?P<action>Ban|Unban) (?P<ip>[\d.]+)'
+  #     event: "fail2ban_{{action}}"
+  #     mapping:
+  #       timestamp: ts
+  #       source_ip: ip
+  #       service: jail

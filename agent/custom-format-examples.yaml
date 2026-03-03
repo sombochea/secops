@@ -1,0 +1,171 @@
+# SecOps Agent — Custom Format Examples
+# Copy any of these source blocks into your config.yaml sources list.
+#
+# How custom format works:
+#   - pattern: Go regex with named capture groups (?P<name>...)
+#   - event:   static string OR "{{group_name}}" to use a captured value
+#   - mapping: maps standard event fields to named groups
+#
+# Standard fields: status, user, source_ip, service, auth_method,
+#                  timestamp, ua, ruser, tty, pam_type
+# Any other mapping key becomes a metadata key-value pair.
+
+sources:
+
+  # ─── 1. Generic Firewall / Packet Filter ────────────────────────────────────
+  # Log line:
+  #   2026-01-15 10:30:00 DENY 203.0.113.42 -> 10.0.0.1:22 proto=tcp iface=eth0
+  - path: /var/log/firewall.log
+    format: custom
+    host: fw-01
+    format_parser:
+      pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>ALLOW|DENY|DROP|REJECT) (?P<src>[\d.]+) -> (?P<dst>[\d.:]+) proto=(?P<proto>\w+)'
+      event: "firewall_{{action}}"
+      mapping:
+        timestamp: ts
+        source_ip: src
+        status: action       # DENY/DROP → status=failed via dashboard logic
+        destination: dst     # → metadata.destination
+        protocol: proto      # → metadata.protocol
+
+  # ─── 2. Apache / Caddy Combined Access Log ──────────────────────────────────
+  # Log line:
+  #   203.0.113.42 - frank [10/Oct/2000:13:55:36 -0700] "GET /index.html HTTP/1.1" 200 2326 "-" "Mozilla/5.0"
+  - path: /var/log/apache2/access.log
+    format: custom
+    host: web-01
+    format_parser:
+      pattern: '^(?P<ip>[\d.a-fA-F:]+) \S+ (?P<user>\S+) \[(?P<ts>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<code>\d{3}) \d+ "[^"]*" "(?P<ua>[^"]*)"'
+      event: "http_request"
+      mapping:
+        source_ip: ip
+        user: user
+        timestamp: ts
+        ua: ua
+        method: method       # → metadata.method
+        path: path           # → metadata.path
+        status_code: code    # → metadata.status_code
+
+  # ─── 3. Fail2ban Action Log ──────────────────────────────────────────────────
+  # Log line:
+  #   2026-01-15 10:30:00,123 fail2ban.actions [INFO]  [sshd] Ban 203.0.113.42
+  - path: /var/log/fail2ban.log
+    format: custom
+    host: bastion-01
+    format_parser:
+      pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ fail2ban\.\w+\s+\[\w+\]\s+\[(?P<jail>\w+)\] (?P<action>Ban|Unban|Found) (?P<ip>[\d.]+)'
+      event: "fail2ban_{{action}}"
+      mapping:
+        timestamp: ts
+        source_ip: ip
+        service: jail        # sshd, nginx, etc.
+        action: action       # → metadata.action
+
+  # ─── 4. HAProxy HTTP Log ─────────────────────────────────────────────────────
+  # Log line:
+  #   Jan  3 12:00:00 haproxy[1234]: 203.0.113.42:54321 [03/Jan/2026:12:00:00.000] fe_http be_app/server01 1/0/2/8/11 200 1234 - - ---- 10/5/2/1/0 0/0 "GET /api/health HTTP/1.1"
+  - path: /var/log/haproxy/haproxy.log
+    format: custom
+    host: lb-01
+    format_parser:
+      pattern: '(?P<ts>\w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2}) haproxy\[\d+\]: (?P<src>[\d.]+):\d+ \[[^\]]+\] (?P<fe>\S+) (?P<be>\S+) [\d/-]+ (?P<code>\d+) \d+ .* "(?P<method>\S+) (?P<path>\S+)'
+      event: "haproxy_request"
+      mapping:
+        timestamp: ts
+        source_ip: src
+        status_code: code    # → metadata.status_code
+        frontend: fe         # → metadata.frontend
+        backend: be          # → metadata.backend
+        method: method       # → metadata.method
+        path: path           # → metadata.path
+
+  # ─── 5. Sudo / Privilege Escalation Log ─────────────────────────────────────
+  # Log line (syslog message part):
+  #   Jan  3 12:00:00 server01 sudo[1234]: deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/bin/bash
+  - path: /var/log/auth.log
+    format: custom
+    host: server-01
+    format_parser:
+      pattern: '(?P<ts>\w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2}) \S+ sudo\[\d+\]: (?P<user>\S+)\s+: TTY=(?P<tty>\S+) ; PWD=\S+ ; USER=(?P<ruser>\S+) ; COMMAND=(?P<cmd>.+)'
+      event: "sudo_exec"
+      mapping:
+        timestamp: ts
+        user: user
+        tty: tty
+        ruser: ruser         # target user (usually root)
+        command: cmd         # → metadata.command
+
+  # ─── 6. VPN / OpenVPN Auth Log ───────────────────────────────────────────────
+  # Log line:
+  #   Tue Jan 15 10:30:00 2026 203.0.113.42:54321 [user@example.com] Peer Connection Initiated
+  #   Tue Jan 15 10:30:05 2026 203.0.113.42:54321 VERIFY ERROR: ... bad certificate
+  - path: /var/log/openvpn/openvpn.log
+    format: custom
+    host: vpn-01
+    format_parser:
+      pattern: '(?P<ts>\w{3} \w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2} \d{4}) (?P<src>[\d.]+):\d+ (?:\[(?P<user>[^\]]+)\] )?(?P<msg>.*)'
+      event: "vpn_event"
+      mapping:
+        timestamp: ts
+        source_ip: src
+        user: user
+        message: msg         # → metadata.message
+
+  # ─── 7. AWS CloudTrail-style JSON (single-field extraction) ──────────────────
+  # For structured JSON logs, prefer format: json.
+  # Use custom only if you need to extract from a specific JSON field as text.
+  # Log line (flattened):
+  #   {"time":"2026-01-15T10:30:00Z","sourceIPAddress":"203.0.113.42","userIdentity":{"userName":"alice"},"eventName":"ConsoleLogin","errorCode":"Failed authentication"}
+  # Better handled with format: json — shown here for reference only.
+  # - path: /var/log/cloudtrail/events.jsonl
+  #   format: json
+
+  # ─── 8. Postfix Mail Log ─────────────────────────────────────────────────────
+  # Log line:
+  #   Jan  3 12:00:00 mail postfix/smtpd[1234]: NOQUEUE: reject: RCPT from unknown[203.0.113.42]: 554 5.7.1 Service unavailable; from=<spam@evil.com> to=<user@example.com>
+  - path: /var/log/mail.log
+    format: custom
+    host: mail-01
+    format_parser:
+      pattern: '(?P<ts>\w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2}) \S+ postfix/\w+\[\d+\]: \w+: (?P<action>reject|accept): \w+ from [^[]*\[(?P<src>[\d.]+)\].*from=<(?P<from>[^>]*)> to=<(?P<to>[^>]*)>'
+      event: "smtp_{{action}}"
+      mapping:
+        timestamp: ts
+        source_ip: src
+        from: from           # → metadata.from
+        to: to               # → metadata.to
+
+  # ─── 9. Kubernetes Audit Log (text format) ───────────────────────────────────
+  # Log line:
+  #   2026-01-15T10:30:00Z AUDIT verb=create user=alice sourceIPs=203.0.113.42 resource=pods namespace=default responseStatus=201
+  - path: /var/log/kubernetes/audit.log
+    format: custom
+    host: k8s-master-01
+    format_parser:
+      pattern: '(?P<ts>\d{4}-\d{2}-\d{2}T[\d:]+Z) AUDIT verb=(?P<verb>\w+) user=(?P<user>\S+) sourceIPs=(?P<src>[\d.,]+) resource=(?P<resource>\w+).*responseStatus=(?P<code>\d+)'
+      event: "k8s_audit"
+      mapping:
+        timestamp: ts
+        user: user
+        source_ip: src
+        verb: verb           # → metadata.verb
+        resource: resource   # → metadata.resource
+        status_code: code    # → metadata.status_code
+
+  # ─── 10. Custom App Auth Log ─────────────────────────────────────────────────
+  # Log line:
+  #   [2026-01-15 10:30:00] ERROR auth: login failed for user 'alice' from 203.0.113.42 (invalid password)
+  - path: /var/log/myapp/app.log
+    format: custom
+    host: app-01
+    tags:
+      service: myapp
+    format_parser:
+      pattern: '\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] (?P<level>\w+) auth: (?P<msg>login (?P<result>failed|succeeded)) for user .(?P<user>[^'']+). from (?P<src>[\d.]+)'
+      event: "app_auth"
+      mapping:
+        timestamp: ts
+        user: user
+        source_ip: src
+        status: result       # failed / succeeded
+        message: msg         # → metadata.message

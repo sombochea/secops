@@ -56,22 +56,39 @@ See [config.example.yaml](config.example.yaml) for all options.
 
 ### Custom Format Parser
 
-For log formats not covered by built-in parsers, use `format: custom` with a regex pattern using named capture groups:
+For log formats not covered by built-in parsers, use `format: custom` with a Go regex pattern using named capture groups:
 
 ```yaml
 sources:
-    - path: /var/log/firewall.log
-      format: custom
-      format_parser:
-          pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>ALLOW|DENY) (?P<src>[\d.]+)'
-          event: 'firewall_{{action}}' # static string or {{group_name}}
-          mapping:
-              timestamp: ts
-              source_ip: src
-              status: action
+  - path: /var/log/firewall.log
+    format: custom
+    format_parser:
+      pattern: '(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<action>ALLOW|DENY) (?P<src>[\d.]+)'
+      event: "firewall_{{action}}"   # static string OR {{group_name}}
+      mapping:
+        timestamp: ts
+        source_ip: src
+        status: action
 ```
 
-Standard fields: `status`, `user`, `source_ip`, `service`, `auth_method`, `timestamp`, `ua`, `ruser`, `tty`, `pam_type`. Unmapped fields go to `metadata`.
+**Standard fields** (map these to capture groups): `status`, `user`, `source_ip`, `service`, `auth_method`, `timestamp`, `ua`, `ruser`, `tty`, `pam_type`
+
+Any mapping key not in the standard set is stored as a `metadata` key-value pair.
+
+**Ready-to-use patterns** for 10 common log formats are in [custom-format-examples.yaml](custom-format-examples.yaml):
+
+| # | Format | Example log source |
+|---|--------|--------------------|
+| 1 | Generic firewall / packet filter | `/var/log/firewall.log` |
+| 2 | Apache / Caddy combined access log | `/var/log/apache2/access.log` |
+| 3 | Fail2ban action log | `/var/log/fail2ban.log` |
+| 4 | HAProxy HTTP log | `/var/log/haproxy/haproxy.log` |
+| 5 | Sudo / privilege escalation | `/var/log/auth.log` |
+| 6 | OpenVPN auth log | `/var/log/openvpn/openvpn.log` |
+| 7 | AWS CloudTrail JSON | `/var/log/cloudtrail/events.jsonl` |
+| 8 | Postfix mail log | `/var/log/mail.log` |
+| 9 | Kubernetes audit log | `/var/log/kubernetes/audit.log` |
+| 10 | Custom app auth log | `/var/log/myapp/app.log` |
 
 ## Run
 
