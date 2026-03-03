@@ -15,7 +15,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings,
-  Building2, Check, ChevronsUpDown, Crosshair, Clock, Search, Menu, Workflow, Activity, GraduationCap,
+  Building2, Check, ChevronsUpDown, Crosshair, Clock, Search, Menu, Workflow, Activity, GraduationCap, ShieldAlert,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -25,11 +25,12 @@ import { BUILD_INFO } from "@/lib/build-info";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/cyberkiller", label: "CyberKiller", icon: Crosshair },
+  { href: "/threats", label: "Threats", icon: ShieldAlert },
   { href: "/hunt", label: "Hunt", icon: Search },
   { href: "/timeline", label: "Timeline", icon: Clock },
-  { href: "/flowmap", label: "FlowMap", icon: Workflow },
   { href: "/uba", label: "UBA", icon: Activity },
-  { href: "/cyberkiller", label: "CyberKiller", icon: Crosshair },
+  { href: "/flowmap", label: "FlowMap", icon: Workflow },
 ];
 
 const PROFILE_ITEMS = [
