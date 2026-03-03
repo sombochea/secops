@@ -27,26 +27,36 @@ type Event struct {
 }
 
 // --- Syslog ---
-// Matches: "Mon  2 15:04:05 host service[pid]: message"
+// Traditional BSD syslog: "Mon  2 15:04:05 host service[pid]: message"
 var syslogRe = regexp.MustCompile(`^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+?)(?:\[\d+\])?:\s+(.*)`)
+
+// RFC3339 / systemd-journal syslog: "2006-01-02T15:04:05.999999+07:00 host service[pid]: message"
+var syslogRFC3339Re = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2}))\s+(\S+)\s+(\S+?)(?:\[\d+\])?:\s+(.*)`)
 
 // SSH-specific patterns
 var (
-	sshFailedRe  = regexp.MustCompile(`Failed (\S+) for (?:invalid user )?(\S+) from ([\d.]+) port \d+`)
-	sshAcceptRe  = regexp.MustCompile(`Accepted (\S+) for (\S+) from ([\d.]+) port \d+`)
-	sshInvalidRe = regexp.MustCompile(`Invalid user (\S+) from ([\d.]+)`)
+	sshFailedRe  = regexp.MustCompile(`Failed (\S+) for (?:invalid user )?(\S+) from ([\da-fA-F.:]+) port \d+`)
+	sshAcceptRe  = regexp.MustCompile(`Accepted (\S+) for (\S+) from ([\da-fA-F.:]+) port \d+`)
+	sshInvalidRe = regexp.MustCompile(`Invalid user (\S+) from ([\da-fA-F.:]+)`)
 	sshSessionRe = regexp.MustCompile(`pam_unix\(\S+:session\): session (opened|closed) for user (\S+)`)
 )
 
 func ParseSyslog(line, host string) *Event {
-	m := syslogRe.FindStringSubmatch(line)
-	if m == nil {
+	var ts, logHost, service, msg string
+
+	if m := syslogRFC3339Re.FindStringSubmatch(line); m != nil {
+		ts = parseRFC3339Time(m[1])
+		logHost = m[2]
+		service = m[3]
+		msg = m[4]
+	} else if m := syslogRe.FindStringSubmatch(line); m != nil {
+		ts = parseSyslogTime(m[1])
+		logHost = m[2]
+		service = m[3]
+		msg = m[4]
+	} else {
 		return nil
 	}
-	ts := parseSyslogTime(m[1])
-	logHost := m[2]
-	service := m[3]
-	msg := m[4]
 	if host == "" {
 		host = logHost
 	}
@@ -295,15 +305,36 @@ func ParsePostgres(line, host string) *Event {
 // --- Helpers ---
 
 func parseSyslogTime(s string) string {
+	now := time.Now()
 	t, err := time.Parse("Jan  2 15:04:05", s)
 	if err != nil {
 		t, err = time.Parse("Jan 2 15:04:05", s)
 	}
 	if err != nil {
-		return time.Now().UTC().Format(time.RFC3339)
+		return now.UTC().Format(time.RFC3339)
 	}
-	t = t.AddDate(time.Now().Year(), 0, 0)
+	// Assign current year; if the resulting time is in the future, use previous year.
+	t = t.AddDate(now.Year(), 0, 0)
+	if t.After(now.Add(24 * time.Hour)) {
+		t = t.AddDate(-1, 0, 0)
+	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+func parseRFC3339Time(s string) string {
+	// Try full RFC3339 with sub-seconds and timezone.
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02T15:04:05Z",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return time.Now().UTC().Format(time.RFC3339)
 }
 
 func truncate(s string, n int) string {
