@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Bar,
@@ -26,6 +27,31 @@ const COLORS = [
   "hsl(15, 75%, 55%)",
   "hsl(140, 50%, 45%)",
 ];
+
+function parsePlatform(ua: string): string {
+  const u = ua.toLowerCase();
+  if (u.includes("windows")) return "Windows";
+  if (u.includes("android")) return "Android";
+  if (u.includes("iphone") || u.includes("ipad") || u.includes("ios")) return "iOS";
+  if (u.includes("macintosh") || u.includes("mac os")) return "macOS";
+  if (u.includes("linux") || u.includes("x11")) return "Linux";
+  if (u.includes("chromeos") || u.includes("cros")) return "ChromeOS";
+  if (u.includes("bot") || u.includes("crawler") || u.includes("spider")) return "Bot";
+  if (u.includes("curl") || u.includes("wget") || u.includes("python") || u.includes("go-http") || u.includes("secops")) return "CLI/Script";
+  return "Other";
+}
+
+function aggregatePlatforms(byUa: AggregationItem[]): AggregationItem[] {
+  const map = new Map<string, number>();
+  for (const item of byUa) {
+    if (!item.name) continue;
+    const platform = parsePlatform(item.name);
+    map.set(platform, (map.get(platform) ?? 0) + item.count);
+  }
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
 
 interface Props {
   aggregations?: Aggregations;
@@ -193,6 +219,8 @@ export function EventCharts({ aggregations, loading, onSegmentClick }: Props) {
 
   const { byType = [], byHost = [], byIp = [], byService = [], byUser = [], byAuthMethod = [], byUa = [], byCountry = [] } = aggregations ?? {};
 
+  const byPlatform = useMemo(() => aggregatePlatforms(byUa), [byUa]);
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <MiniPieChart title="Events by Type" data={byType} filterKey="event" onSegmentClick={onSegmentClick} />
@@ -203,6 +231,7 @@ export function EventCharts({ aggregations, loading, onSegmentClick }: Props) {
       <MiniBarChart title="Top Services" data={byService} filterKey="service" onSegmentClick={onSegmentClick} />
       <MiniPieChart title="Top Countries" data={byCountry} filterKey="geo_country" onSegmentClick={onSegmentClick} />
       <MiniBarChart title="User Agents" data={byUa} filterKey="ua" onSegmentClick={onSegmentClick} />
+      <MiniPieChart title="Top Platforms" data={byPlatform} filterKey="ua" onSegmentClick={onSegmentClick} />
     </div>
   );
 }
