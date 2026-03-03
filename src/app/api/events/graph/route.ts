@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
 
   const hours = Math.min(Math.max(1, parseInt(req.nextUrl.searchParams.get("hours") ?? "24")), 168);
   const limitParam = Math.min(Math.max(50, parseInt(req.nextUrl.searchParams.get("limit") ?? "500")), 2000);
+  const topN = Math.min(Math.max(5, parseInt(req.nextUrl.searchParams.get("topN") ?? "30")), 100);
   const ipFilter = req.nextUrl.searchParams.get("ip") ?? "";
   const since = new Date(Date.now() - hours * 3600_000);
 
@@ -137,11 +138,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Cap nodes: keep top N per type (by threats desc, count desc)
+  const allNodes = Array.from(nodeMap.values());
+  const byType: Record<string, typeof allNodes> = {};
+  for (const n of allNodes) (byType[n.type] ??= []).push(n);
+  const keptIds = new Set<string>();
+  for (const group of Object.values(byType)) {
+    group.sort((a, b) => b.threats - a.threats || b.count - a.count);
+    for (const n of group.slice(0, topN)) keptIds.add(n.id);
+  }
+  const nodes = allNodes.filter((n) => keptIds.has(n.id));
+  const edges = Array.from(edgeMap.values()).filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
+
   return NextResponse.json({
-    nodes: Array.from(nodeMap.values()),
-    edges: Array.from(edgeMap.values()),
+    nodes,
+    edges,
     totalEvents: rows.length,
+    totalNodes: allNodes.length,
     hours,
+    topN,
     detail,
   });
 }

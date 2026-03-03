@@ -8,6 +8,8 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   type NodeTypes,
@@ -24,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { AboutDialog } from "@/components/about-dialog";
-import { Globe, Server, User, Activity, Cog, AlertTriangle, RefreshCw, Maximize2, Minimize2, X, Search } from "lucide-react";
+import { Globe, Server, User, Activity, Cog, AlertTriangle, RefreshCw, Maximize2, Minimize2, X, Search, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
@@ -76,11 +78,14 @@ function SecurityNode({ data }: { data: { label: string; nodeType: keyof typeof 
 
 const nodeTypes: NodeTypes = { securityNode: SecurityNode };
 
-// ─── Layout: force-directed-ish placement ────────────────────────────────────
+// ─── Layout: hierarchical layered ────────────────────────────────────────────
+
+type ApiNode = { id: string; type: string; count: number; threats: number; riskMax: number; label: string; country?: string };
+type ApiEdge = { id: string; source: string; target: string; count: number; threats: number };
 
 function layoutNodes(
-  apiNodes: { id: string; type: string; count: number; threats: number; riskMax: number; label: string; country?: string }[],
-  apiEdges: { id: string; source: string; target: string; count: number; threats: number }[],
+  apiNodes: ApiNode[],
+  apiEdges: ApiEdge[],
   threatsOnly: boolean
 ): { nodes: Node[]; edges: Edge[] } {
   let filteredNodes = apiNodes;
@@ -92,47 +97,57 @@ function layoutNodes(
     filteredEdges = apiEdges.filter((e) => threatIds.has(e.source) && threatIds.has(e.target));
   }
 
-  // Group by type for layered layout
-  const groups: Record<string, typeof filteredNodes> = {};
-  for (const n of filteredNodes) {
-    (groups[n.type] ??= []).push(n);
+  // Build adjacency for degree-based sizing
+  const degree = new Map<string, number>();
+  for (const e of filteredEdges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
   }
 
-  const typeOrder = ["ip", "user", "host", "service", "event"];
+  // Group by type, sort by threats then count
+  const groups: Record<string, ApiNode[]> = {};
+  for (const n of filteredNodes) (groups[n.type] ??= []).push(n);
+
+  const typeOrder = ["ip", "user", "host", "service"];
+  const NODE_W = 200;
+  const NODE_H = 80;
+  const LAYER_GAP = 140;
   const nodes: Node[] = [];
   let yOffset = 0;
 
   for (const type of typeOrder) {
     const group = groups[type];
     if (!group?.length) continue;
-    // Sort by threat count desc, then event count desc
     group.sort((a, b) => b.threats - a.threats || b.count - a.count);
-    const cols = Math.max(1, Math.ceil(Math.sqrt(group.length * 2)));
+    const totalWidth = group.length * NODE_W;
+    const startX = -totalWidth / 2;
     for (let i = 0; i < group.length; i++) {
       const n = group[i];
       nodes.push({
         id: n.id,
         type: "securityNode",
-        position: { x: (i % cols) * 220 + Math.random() * 20, y: yOffset + Math.floor(i / cols) * 100 },
+        position: { x: startX + i * NODE_W, y: yOffset },
         data: { label: n.label, nodeType: n.type, count: n.count, threats: n.threats, riskMax: n.riskMax, country: n.country },
       });
     }
-    yOffset += (Math.ceil(group.length / cols)) * 100 + 80;
+    yOffset += LAYER_GAP;
   }
 
+  const manyEdges = filteredEdges.length > 80;
   const edges: Edge[] = filteredEdges.map((e) => ({
     id: e.id,
     source: e.source,
     target: e.target,
     animated: e.threats > 0,
+    type: "smoothstep",
     style: {
       stroke: e.threats > 0 ? "#ef4444" : "#444",
-      strokeWidth: Math.min(1 + Math.log2(e.count + 1), 4),
-      opacity: Math.min(0.3 + e.count / 20, 1),
+      strokeWidth: Math.min(1 + Math.log2(e.count + 1), 3),
+      opacity: Math.min(0.3 + e.count / 20, 0.9),
     },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: e.threats > 0 ? "#ef4444" : "#444" },
-    label: e.count > 1 ? `${e.count}` : undefined,
-    labelStyle: { fill: "#888", fontSize: 10 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: e.threats > 0 ? "#ef4444" : "#444" },
+    label: !manyEdges && e.count > 1 ? `${e.count}` : undefined,
+    labelStyle: { fill: "#888", fontSize: 9 },
     labelBgStyle: { fill: "#1a1a2e", fillOpacity: 0.8 },
   }));
 
@@ -188,22 +203,33 @@ function DetailPanel({ detail }: { detail: { ip: string; totalEvents: number; th
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function SecurityFlowMap({ userName }: { userName: string }) {
+  return (
+    <ReactFlowProvider>
+      <SecurityFlowMapInner userName={userName} />
+    </ReactFlowProvider>
+  );
+}
+
+function SecurityFlowMapInner({ userName }: { userName: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const reactFlow = useReactFlow();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [hours, setHours] = useState("24");
+  const [topN, setTopN] = useState("30");
   const [threatsOnly, setThreatsOnly] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [ipFilter, setIpFilter] = useState(searchParams.get("ip") ?? "");
   const [ipInput, setIpInput] = useState(searchParams.get("ip") ?? "");
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [layoutKey, setLayoutKey] = useState(0);
 
   const apiUrl = useMemo(() => {
-    const p = new URLSearchParams({ hours, limit: "1000" });
+    const p = new URLSearchParams({ hours, limit: "1000", topN });
     if (ipFilter) p.set("ip", ipFilter);
     return `/api/events/graph?${p}`;
-  }, [hours, ipFilter]);
+  }, [hours, ipFilter, topN]);
 
   const { data, isLoading, mutate: refresh } = useSWR(apiUrl, fetcher, {
     refreshInterval: 30000,
@@ -215,7 +241,10 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
     const { nodes: n, edges: e } = layoutNodes(data.nodes, data.edges, threatsOnly);
     setNodes(n);
     setEdges(e);
-  }, [data, threatsOnly]);
+    setTimeout(() => reactFlow.fitView({ padding: 0.2 }), 50);
+  }, [data, threatsOnly, layoutKey]);
+
+  const handleRealign = useCallback(() => setLayoutKey((k) => k + 1), []);
 
   const stats = useMemo(() => {
     if (!data?.nodes) return { ips: 0, hosts: 0, users: 0, services: 0, threats: 0, totalEdges: 0 };
@@ -287,6 +316,17 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
               <Switch checked={threatsOnly} onCheckedChange={setThreatsOnly} />
             </div>
 
+            <Select value={topN} onValueChange={setTopN}>
+              <SelectTrigger className="h-7 w-[90px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[["10", "Top 10"], ["20", "Top 20"], ["30", "Top 30"], ["50", "Top 50"], ["100", "Top 100"]].map(([v, l]) => (
+                  <SelectItem key={v} value={v} className="text-xs">{l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Select value={hours} onValueChange={setHours}>
               <SelectTrigger className="h-7 w-[100px] text-xs">
                 <SelectValue />
@@ -298,6 +338,9 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
               </SelectContent>
             </Select>
 
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRealign} title="Re-align layout">
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => refresh()}>
               <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
             </Button>
@@ -320,6 +363,7 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
         {/* Stats bar */}
         <div className="flex flex-wrap gap-3 px-4 sm:px-6 py-1.5 border-b bg-card/50 text-[11px]">
           <span className="text-muted-foreground">{data?.totalEvents ?? 0} events</span>
+          {data?.totalNodes > nodes.length && <span className="text-yellow-500">showing top {topN}/type ({nodes.length} of {data.totalNodes} nodes)</span>}
           <span><Globe className="inline h-3 w-3 mr-0.5 text-blue-500" />{stats.ips} IPs</span>
           <span><Server className="inline h-3 w-3 mr-0.5 text-green-500" />{stats.hosts} hosts</span>
           <span><User className="inline h-3 w-3 mr-0.5 text-purple-500" />{stats.users} users</span>
