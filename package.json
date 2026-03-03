@@ -14,6 +14,7 @@
     "db:migrate:prod": "sh ./drizzle/migrate.sh"
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.1",
     "better-auth": "^1.5.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
