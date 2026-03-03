@@ -1,3 +1,30 @@
+### Features:
+
+- [x] Dashboard
+- [x] Hunt
+- [x] Timeline
+- [x] FlowMap
+- [x] UBA
+- [x] CyberKiller
+- [ ] Threat Intelligence
+- [x] Playbook
+- [ ] SOC Analyst Mode
+- [ ] AI-powered SOC Assistant (Telegram Bot)
+- [ ] SOC Collaboration Hub
+- [ ] Threat Intelligence Sharing
+- [ ] Security Incident Response Plan
+- [ ] SOC Training Mode
+- [ ] Threat Intelligence Dashboard
+- [ ] SOC Metrics and Reporting
+- [ ] SOC Automation Playbook
+- [ ] SOC Threat Hunting Playbook
+- [ ] SOC Incident Management
+- [ ] SOC Dashboard Customization
+- [ ] SOC Alerting System
+- [ ] SOC Dashboard API
+- [ ] AI-powered threat analysis and response recommendations
+- [ ] Honeypot Integration
+
 ### Critical
 
 - [x] Leak all organizations when user registered first time in setup wizard (or select existing).
@@ -31,6 +58,26 @@
 - Implement role-based access control (RBAC) to manage user permissions and access to different features of the dashboard.
 - Implement SecOps Agent (Go-based): A lightweight agent that can be installed on servers to collect security event data and send it to the SOC dashboard in real-time, providing more comprehensive visibility into security events across the infrastructure (using a simple configuration file to specify which logs to monitor and how to parse them, and supporting common log formats like syslog, Nginx, MySQL, PostgreSQL, JSON, and CSV).
 - Add ansible playbook to deploy a security monitoring and send to webhook endpoint for the SOC dashboard, making it easier for users to set up and configure their security monitoring infrastructure by one-click deployment of a pre-configured ansible playbook that sets up common security monitoring tools (e.g., fail2ban, logwatch) and configures them to send event data to the SOC dashboard's webhook endpoint.
+- Automate response actions based on detected threats, such as blocking IP addresses or disabling user accounts, directly from the dashboard.
+- Add integration with popular SIEM tools (e.g., Splunk, ELK Stack) to allow users to forward security event data from the SOC dashboard to their existing SIEM infrastructure for further analysis and correlation.
+- Implement a "SOC Analyst Mode" that provides a more streamlined and focused interface for SOC analysts, with features like quick access to common actions, customizable dashboards, and enhanced filtering options to help analysts quickly identify and respond to security events.
+- Add AI-powered agents that can assist SOC analysts by automatically analyzing security events, providing recommendations for response actions, and even taking automated actions based on predefined rules and machine learning models to help reduce the workload on analysts and improve response times to potential threats.
+- Add Telgram Bot AI-powered SOC assistant that can provide real-time updates on security events, answer questions about the dashboard, and assist with incident response actions through a conversational interface, allowing SOC analysts to interact with the dashboard and receive important information without needing to be at their workstation. Also, the bot can proactively send alerts and notifications about potential threats and incidents, helping to ensure that analysts are always informed about critical security events even when they are away from their desks. Furthermore, the bot can provide quick access to common actions and information, such as generating `fail2ban` commands or retrieving details about specific events, through simple chat commands, making it a valuable tool for enhancing the efficiency and effectiveness of SOC analysts in managing security events and incidents. Also can do actions like blocking IPs, disabling user accounts, or retrieving event details through chat commands, providing a convenient and efficient way for SOC analysts to manage security events and incidents on the go (through SocOps's integrated MCP).
+- Add a "SOC Collaboration Hub" that allows SOC analysts to collaborate and share information about security events, incidents, and response actions in real-time, fostering better communication and teamwork within the SOC team and improving overall incident response effectiveness.
+- Add a "Threat Intelligence Sharing" feature that allows organizations to share anonymized threat intelligence data with each other through the SOC dashboard, creating a community-driven approach to threat detection and response and helping organizations to stay informed about emerging threats and attack techniques.
+- Add a "Security Incident Response Plan" section that provides a structured framework for responding to security incidents, including predefined steps, checklists, and best practices to guide SOC analysts through the incident response process and ensure a consistent and effective response to security incidents.
+- Add a "SOC Training Mode" that provides interactive training scenarios and simulations for SOC analysts to practice their skills and improve their ability to respond to real-world security incidents, helping to build a more skilled and effective SOC team.
+- Add a "Threat Intelligence Dashboard" that provides a centralized view of threat intelligence data, including indicators of compromise (IOCs), attack techniques, and emerging threats, allowing SOC analysts to stay informed about the latest threats and trends in the cybersecurity landscape and use this information to enhance their monitoring and response efforts.
+- Add a "SOC Metrics and Reporting" feature that provides detailed metrics and reports on security events, incidents, and response actions, allowing SOC analysts to track their performance, identify areas for improvement, and demonstrate the value of their work to stakeholders.
+- Add a "SOC Automation Playbook" that allows SOC analysts to create and manage automated response playbooks, defining specific actions to be taken in response to certain types of security events or incidents, helping to streamline and standardize the incident response process and improve overall efficiency.
+- Add a "SOC Threat Hunting Playbook" that provides a structured framework for conducting proactive threat hunting activities, including predefined steps, techniques, and best practices to guide SOC analysts in their threat hunting efforts and help them identify potential threats before they become incidents.
+- Add a "SOC Incident Management" feature that allows SOC analysts to track and manage security incidents from detection to resolution, including features for assigning incidents to team members, tracking incident status, and documenting response actions taken, helping to ensure that incidents are handled efficiently and effectively.
+- Add a "SOC Dashboard Customization" feature that allows users to customize the layout, widgets, and visualizations on the SOC dashboard to suit their specific needs and preferences, providing a more personalized and effective monitoring experience for SOC analysts.
+- Add a "SOC Alerting System" that allows users to set up custom alerts based on specific criteria (e.g., certain types of events, thresholds for event frequency) and receive notifications through various channels (e.g., email, SMS, Slack) when these alerts are triggered, helping to ensure that SOC analysts are promptly informed about potential threats and can take timely action to investigate and respond to them.
+- Add a "SOC Dashboard API" that provides a RESTful API for accessing and managing security event data, allowing users to integrate the SOC dashboard with other tools and systems in their security infrastructure and enabling more advanced automation and customization options for SOC analysts.
+- Add AI-powered threat analysis and response recommendations that can analyze security events in real-time, identify potential threats, and provide actionable recommendations for response actions based on predefined rules and machine learning models, helping to enhance the effectiveness of SOC analysts and improve overall incident response outcomes.
+- Implement Honeypot attack visualization: A feature that allows users to deploy honeypots within their network and visualize the attack patterns and techniques being used against these honeypots on the SOC dashboard, providing additional insights into potential threats and attack vectors targeting the organization. Also, add pre-configured honeypot templates for common services (e.g., SSH, HTTP) that users can easily deploy and manage from the dashboard, and integrate the data collected from these honeypots into the SOC dashboard to provide a more comprehensive view of the threat landscape and help analysts identify emerging threats and attack techniques being used against the organization.
+- Add "Honeypot Integration" that allows users to deploy and manage honeypots within their network and integrate the data collected from these honeypots into the SOC dashboard, providing additional visibility into potential threats and attack techniques being used against the organization.
 
 ### Key Features for the SOC Dashboard
 
