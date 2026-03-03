@@ -15,10 +15,11 @@ import {
 import {
   User, Search, AlertTriangle, Activity, Globe, Server,
   ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight,
-  X, ArrowUpDown, Workflow,
+  X, ArrowUpDown, Workflow, Users, ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelative } from "@/lib/format-date";
+import { useTimezone } from "@/lib/timezone-context";
 import Link from "next/link";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -55,6 +56,7 @@ export function UserBehaviorAnalytics({ userName }: { userName: string }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
+  const { timezone } = useTimezone();
 
   const apiUrl = useMemo(() => {
     const p = new URLSearchParams({ hours });
@@ -119,14 +121,15 @@ export function UserBehaviorAnalytics({ userName }: { userName: string }) {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 space-y-4">
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Activity className="h-4 w-4 text-purple-500" />User Behavior Analytics
-            </h2>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <div className="relative">
+          <div className="space-y-3 sm:flex sm:items-center sm:justify-between sm:space-y-0">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-purple-500 shrink-0" />
+              <h2 className="text-sm font-semibold">User Behavior Analytics</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[140px] max-w-[220px]">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input placeholder="Search users..." value={search} onChange={(e) => handleSearch(e.target.value)} className="h-8 w-[160px] sm:w-[180px] pl-8 text-xs" />
+                <Input placeholder="Search users..." value={search} onChange={(e) => handleSearch(e.target.value)} className="h-8 w-full pl-8 text-xs" />
               </div>
               <Select value={hours} onValueChange={(v) => { setHours(v); setPage(1); }}>
                 <SelectTrigger className="h-8 w-[100px] text-xs"><SelectValue /></SelectTrigger>
@@ -142,15 +145,18 @@ export function UserBehaviorAnalytics({ userName }: { userName: string }) {
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: "Total Users", value: summary.total, color: "" },
-              { label: "Critical Risk", value: summary.critical, color: "text-red-500" },
-              { label: "High Risk", value: summary.high, color: "text-orange-500" },
-              { label: "Anomalous", value: summary.anomalous, color: "text-yellow-500" },
+              { label: "Total Users", value: summary.total, icon: Users, color: "text-blue-500" },
+              { label: "Critical Risk", value: summary.critical, icon: ShieldAlert, color: "text-red-500" },
+              { label: "High Risk", value: summary.high, icon: AlertTriangle, color: "text-orange-500" },
+              { label: "Anomalous", value: summary.anomalous, icon: Activity, color: "text-yellow-500" },
             ].map((c) => (
               <Card key={c.label}>
-                <CardContent className="pt-4 pb-3 px-4">
-                  <div className={cn("text-2xl font-bold tabular-nums", c.color)}>{c.value}</div>
-                  <div className="text-xs text-muted-foreground">{c.label}</div>
+                <CardHeader className="flex flex-row items-center justify-between pb-1 space-y-0">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">{c.label}</CardTitle>
+                  <c.icon className={cn("h-3.5 w-3.5", c.color)} />
+                </CardHeader>
+                <CardContent>
+                  <div className={cn("text-xl font-bold tabular-nums", c.color)}>{c.value}</div>
                 </CardContent>
               </Card>
             ))}
@@ -308,7 +314,7 @@ export function UserBehaviorAnalytics({ userName }: { userName: string }) {
             </Card>
 
             {/* Detail panel */}
-            {selectedUser && detail && <DetailPanel detail={detail} onClose={() => setSelectedUser("")} />}
+            {selectedUser && detail && <DetailPanel detail={detail} timezone={timezone} onClose={() => setSelectedUser("")} />}
           </div>
         </div>
       </main>
@@ -318,7 +324,22 @@ export function UserBehaviorAnalytics({ userName }: { userName: string }) {
 
 // ─── Detail Panel ────────────────────────────────────────────────────────────
 
-function DetailPanel({ detail, onClose }: { detail: Detail; onClose: () => void }) {
+function DetailPanel({ detail, timezone, onClose }: { detail: Detail; timezone: string; onClose: () => void }) {
+  // Convert UTC hour buckets to local timezone
+  const localActivity = useMemo(() => {
+    const local = new Array(24).fill(0);
+    for (let utcH = 0; utcH < 24; utcH++) {
+      if (!detail.hourlyActivity[utcH]) continue;
+      // Create a date at this UTC hour, format in target tz to get local hour
+      const d = new Date(Date.UTC(2024, 0, 1, utcH));
+      const localH = parseInt(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: timezone }).format(d));
+      local[localH % 24] += detail.hourlyActivity[utcH];
+    }
+    return local;
+  }, [detail.hourlyActivity, timezone]);
+
+  const tzLabel = timezone === "UTC" ? "UTC" : timezone.replace(/_/g, " ").split("/").pop() ?? timezone;
+
   return (
     <Card className="lg:sticky lg:top-4 self-start">
       <CardHeader className="pb-2 px-4 pt-3">
@@ -334,13 +355,13 @@ function DetailPanel({ detail, onClose }: { detail: Detail; onClose: () => void 
       <CardContent className="px-4 pb-4 space-y-4">
         {/* Hourly activity heatmap */}
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Hourly Activity (UTC)</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Hourly Activity ({tzLabel})</p>
           <div className="flex gap-px">
-            {detail.hourlyActivity.map((v, i) => {
-              const max = Math.max(...detail.hourlyActivity, 1);
+            {localActivity.map((v, i) => {
+              const max = Math.max(...localActivity, 1);
               const intensity = v / max;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${i}:00 — ${v} events`}>
+                <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${String(i).padStart(2, "0")}:00 — ${v} events`}>
                   <div
                     className="w-full h-5 rounded-sm border border-border/50"
                     style={{ background: v > 0 ? `rgba(168,85,247,${0.15 + intensity * 0.75})` : "transparent" }}
