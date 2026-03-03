@@ -10,9 +10,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ShieldAlert, Copy, Check, Ban, Terminal, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShieldAlert, Copy, Check, Ban, Terminal, ShieldCheck, ChevronLeft, ChevronRight, Workflow } from "lucide-react";
 import { formatRelative } from "@/lib/format-date";
 import type { RiskSource } from "@/lib/types";
+
+import Link from "next/link";
 
 interface Props {
   sources?: RiskSource[];
@@ -143,6 +145,11 @@ export function RiskSources({ sources, loading, total = 0, onSourceClick, onWhit
                   </span>
                 </button>
                 <div className="flex items-center gap-0 shrink-0">
+                  <IconBtn
+                    icon={Workflow}
+                    label="Visualize attack paths"
+                    onClick={(e) => { e.stopPropagation(); window.location.href = `/flowmap?ip=${encodeURIComponent(s.sourceIp)}`; }}
+                  />
                   <IconBtn
                     icon={Copy}
                     label="Copy fail2ban command"

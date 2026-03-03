@@ -23,7 +23,9 @@ import {
   Monitor,
   Hash,
   Gauge,
+  Workflow,
 } from "lucide-react";
+import Link from "next/link";
 import type { SecurityEvent } from "@/lib/types";
 import { useTimezone } from "@/lib/timezone-context";
 import { formatTz } from "@/lib/format-date";
@@ -104,6 +106,15 @@ export function EventDetailSheet({ event, onClose }: Props) {
               <Field icon={User} label="Remote User" value={event.ruser} />
               <Separator />
               <Field icon={Globe} label="Source IP" value={event.sourceIp} mono />
+              {event.sourceIp && (
+                <>
+                  <div className="flex justify-end -mt-1 mb-1">
+                    <Link href={`/flowmap?ip=${encodeURIComponent(event.sourceIp)}`} className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300">
+                      <Workflow className="h-3 w-3" />Visualize attack paths
+                    </Link>
+                  </div>
+                </>
+              )}
               {event.geoCountry && (
                 <>
                   <Separator />

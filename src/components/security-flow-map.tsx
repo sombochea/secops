@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -24,8 +24,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { AboutDialog } from "@/components/about-dialog";
-import { Globe, Server, User, Activity, Cog, AlertTriangle, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { Globe, Server, User, Activity, Cog, AlertTriangle, RefreshCw, Maximize2, Minimize2, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { formatRelative } from "@/lib/format-date";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -136,17 +139,73 @@ function layoutNodes(
   return { nodes, edges };
 }
 
+// ─── Detail Sidebar ──────────────────────────────────────────────────────────
+
+function DetailPanel({ detail }: { detail: { ip: string; totalEvents: number; threats: number; maxRisk: number; firstSeen: string; lastSeen: string; country: string; city: string; targetHosts: Record<string, number>; targetUsers: Record<string, number>; services: Record<string, number>; eventTypes: Record<string, number>; authMethods: Record<string, number> } }) {
+  const Section = ({ title, data }: { title: string; data: Record<string, number> }) => {
+    const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]);
+    if (!sorted.length) return null;
+    return (
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{title}</p>
+        {sorted.map(([k, v]) => (
+          <div key={k} className="flex justify-between text-xs py-0.5">
+            <span className="font-mono truncate mr-2">{k}</span>
+            <Badge variant="secondary" className="text-[9px] px-1 py-0 shrink-0">{v}</Badge>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-[280px] border-l bg-card overflow-y-auto shrink-0 hidden lg:block">
+      <div className="p-3 border-b">
+        <div className="flex items-center gap-2 mb-2">
+          <Globe className="h-4 w-4 text-blue-500" />
+          <span className="font-mono text-sm font-semibold">{detail.ip}</span>
+        </div>
+        <div className="text-xs text-muted-foreground">{[detail.city, detail.country].filter(Boolean).join(", ") || "Unknown location"}</div>
+      </div>
+      <div className="p-3 space-y-1 border-b text-xs">
+        <div className="flex justify-between"><span className="text-muted-foreground">Total events</span><span>{detail.totalEvents}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Threats</span><span className="text-red-400">{detail.threats}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Max risk</span><span className={detail.maxRisk >= 70 ? "text-red-400" : ""}>{detail.maxRisk}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">First seen</span><span>{formatRelative(detail.firstSeen)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Last seen</span><span>{formatRelative(detail.lastSeen)}</span></div>
+      </div>
+      <div className="p-3 space-y-3">
+        <Section title="Target Hosts" data={detail.targetHosts} />
+        <Section title="Target Users" data={detail.targetUsers} />
+        <Section title="Event Types" data={detail.eventTypes} />
+        <Section title="Services" data={detail.services} />
+        <Section title="Auth Methods" data={detail.authMethods} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function SecurityFlowMap({ userName }: { userName: string }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [hours, setHours] = useState("24");
   const [threatsOnly, setThreatsOnly] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [ipFilter, setIpFilter] = useState(searchParams.get("ip") ?? "");
+  const [ipInput, setIpInput] = useState(searchParams.get("ip") ?? "");
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  const { data, isLoading, mutate: refresh } = useSWR(`/api/events/graph?hours=${hours}&limit=1000`, fetcher, {
+  const apiUrl = useMemo(() => {
+    const p = new URLSearchParams({ hours, limit: "1000" });
+    if (ipFilter) p.set("ip", ipFilter);
+    return `/api/events/graph?${p}`;
+  }, [hours, ipFilter]);
+
+  const { data, isLoading, mutate: refresh } = useSWR(apiUrl, fetcher, {
     refreshInterval: 30000,
     keepPreviousData: true,
   });
@@ -171,6 +230,15 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
     };
   }, [data]);
 
+  const applyIp = (ip: string) => {
+    setIpFilter(ip);
+    setIpInput(ip);
+    const url = ip ? `/flowmap?ip=${encodeURIComponent(ip)}` : "/flowmap";
+    router.replace(url, { scroll: false });
+  };
+
+  const clearIp = () => applyIp("");
+
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => setFullscreen(true)).catch(() => {});
@@ -193,31 +261,61 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 py-2 border-b bg-card">
-          <h2 className="text-sm font-semibold mr-auto">Security Flow Map</h2>
+          <h2 className="text-sm font-semibold">Security Flow Map</h2>
 
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground">Threats only</span>
-            <Switch checked={threatsOnly} onCheckedChange={setThreatsOnly} />
+          {/* IP filter */}
+          <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); applyIp(ipInput.trim()); }}>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+              <Input
+                placeholder="Filter by IP..."
+                value={ipInput}
+                onChange={(e) => setIpInput(e.target.value)}
+                className="h-7 w-[160px] pl-7 text-xs font-mono"
+              />
+            </div>
+            {ipFilter && (
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={clearIp}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </form>
+
+          <div className="ml-auto flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">Threats only</span>
+              <Switch checked={threatsOnly} onCheckedChange={setThreatsOnly} />
+            </div>
+
+            <Select value={hours} onValueChange={setHours}>
+              <SelectTrigger className="h-7 w-[100px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[["1", "1 hour"], ["6", "6 hours"], ["12", "12 hours"], ["24", "24 hours"], ["72", "3 days"], ["168", "7 days"]].map(([v, l]) => (
+                  <SelectItem key={v} value={v} className="text-xs">{l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => refresh()}>
+              <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={toggleFullscreen}>
+              {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
           </div>
-
-          <Select value={hours} onValueChange={setHours}>
-            <SelectTrigger className="h-7 w-[100px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[["1", "1 hour"], ["6", "6 hours"], ["12", "12 hours"], ["24", "24 hours"], ["72", "3 days"], ["168", "7 days"]].map(([v, l]) => (
-                <SelectItem key={v} value={v} className="text-xs">{l}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => refresh()}>
-            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={toggleFullscreen}>
-            {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          </Button>
         </div>
+
+        {/* IP filter badge */}
+        {ipFilter && (
+          <div className="flex items-center gap-2 px-4 sm:px-6 py-1.5 border-b bg-blue-500/10">
+            <Globe className="h-3.5 w-3.5 text-blue-500" />
+            <span className="text-xs">Showing attack paths for</span>
+            <Badge variant="outline" className="font-mono text-xs border-blue-500/50 text-blue-400">{ipFilter}</Badge>
+            <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5" onClick={clearIp}>Clear</Button>
+          </div>
+        )}
 
         {/* Stats bar */}
         <div className="flex flex-wrap gap-3 px-4 sm:px-6 py-1.5 border-b bg-card/50 text-[11px]">
@@ -242,38 +340,44 @@ export function SecurityFlowMap({ userName }: { userName: string }) {
           <span className="flex items-center gap-1"><span className="w-6 h-0.5 bg-zinc-600 inline-block" />normal edge</span>
         </div>
 
-        {/* Flow canvas */}
-        <div className="flex-1 relative">
-          {nodes.length === 0 && !isLoading ? (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-              No events found for the selected period
-            </div>
-          ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-              minZoom={0.1}
-              maxZoom={3}
-              proOptions={{ hideAttribution: true }}
-              colorMode="dark"
-            >
-              <Background gap={20} size={1} color="#333" />
-              <Controls className="!bg-card !border-border !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted" />
-              <MiniMap
-                nodeColor={(n) => {
-                  const t = n.data?.nodeType as keyof typeof TYPE_CONFIG | undefined;
-                  return t ? TYPE_CONFIG[t].color : "#666";
+        {/* Flow canvas + detail panel */}
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 relative">
+            {nodes.length === 0 && !isLoading ? (
+              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
+                No events found for the selected period
+              </div>
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                nodeTypes={nodeTypes}
+                fitView
+                fitViewOptions={{ padding: 0.2 }}
+                minZoom={0.1}
+                maxZoom={3}
+                proOptions={{ hideAttribution: true }}
+                colorMode="dark"
+                onNodeClick={(_, node) => {
+                  if (node.data?.nodeType === "ip") applyIp(node.data.label as string);
                 }}
-                maskColor="rgba(0,0,0,0.7)"
-                className="!bg-card !border-border"
-              />
-            </ReactFlow>
-          )}
+              >
+                <Background gap={20} size={1} color="#333" />
+                <Controls className="!bg-card !border-border !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted" />
+                <MiniMap
+                  nodeColor={(n) => {
+                    const t = n.data?.nodeType as keyof typeof TYPE_CONFIG | undefined;
+                    return t ? TYPE_CONFIG[t].color : "#666";
+                  }}
+                  maskColor="rgba(0,0,0,0.7)"
+                  className="!bg-card !border-border"
+                />
+              </ReactFlow>
+            )}
+          </div>
+          {data?.detail && <DetailPanel detail={data.detail} />}
         </div>
       </div>
     </div>

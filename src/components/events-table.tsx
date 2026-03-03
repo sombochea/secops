@@ -34,7 +34,9 @@ import {
   XCircle,
   AlertTriangle,
   MinusCircle,
+  Workflow,
 } from "lucide-react";
+import Link from "next/link";
 import type { SecurityEvent } from "@/lib/types";
 
 interface Props {
@@ -169,7 +171,13 @@ export function EventsTable({
                       {e.host ?? "—"}
                     </TableCell>
                     <TableCell className="text-sm">{e.user ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{e.sourceIp ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {e.sourceIp ? (
+                        <Link href={`/flowmap?ip=${encodeURIComponent(e.sourceIp)}`} className="inline-flex items-center gap-1 hover:text-blue-400 transition-colors" title="Visualize attack paths" onClick={(ev) => ev.stopPropagation()}>
+                          {e.sourceIp}<Workflow className="h-3 w-3 text-muted-foreground" />
+                        </Link>
+                      ) : "—"}
+                    </TableCell>
                     <TableCell className="text-sm">{e.service ?? "—"}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground whitespace-nowrap">
                       {formatRelative(e.timestamp)}
@@ -211,7 +219,11 @@ export function EventsTable({
                   <span className="text-muted-foreground">User</span>
                   <span className="truncate">{e.user ?? "—"}</span>
                   <span className="text-muted-foreground">Source IP</span>
-                  <span className="font-mono">{e.sourceIp ?? "—"}</span>
+                  {e.sourceIp ? (
+                    <Link href={`/flowmap?ip=${encodeURIComponent(e.sourceIp)}`} className="font-mono inline-flex items-center gap-1 hover:text-blue-400" onClick={(ev) => ev.stopPropagation()}>
+                      {e.sourceIp}<Workflow className="h-3 w-3 text-muted-foreground" />
+                    </Link>
+                  ) : <span className="font-mono">—</span>}
                   <span className="text-muted-foreground">Service</span>
                   <span>{e.service ?? "—"}</span>
                 </div>
