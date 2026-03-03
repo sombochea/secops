@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings, Building2, Check, ChevronsUpDown, Crosshair, Clock } from "lucide-react";
+import { Shield, LogOut, Info, LayoutDashboard, BookOpen, Settings, Building2, Check, ChevronsUpDown, Crosshair, Clock, Search } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ import { BUILD_INFO } from "@/lib/build-info";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/hunt", label: "Hunt", icon: Search },
   { href: "/timeline", label: "Timeline", icon: Clock },
   { href: "/cyberkiller", label: "CyberKiller", icon: Crosshair },
   { href: "/playbook", label: "Playbook", icon: BookOpen },
