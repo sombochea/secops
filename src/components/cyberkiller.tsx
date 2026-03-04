@@ -673,17 +673,27 @@ export function CyberKillerView() {
         return `/api/events?limit=50&from=${from.toISOString()}&to=${now.toISOString()}`;
     });
 
+    const [statsUrl] = useState(() => {
+        const now = new Date();
+        const from = new Date(now.getTime() - 86400000);
+        return `/api/events/stats?from=${from.toISOString()}&to=${now.toISOString()}`;
+    });
+
     const { data } = useSWR(apiUrl, fetcher, {
         refreshInterval: 3000,
         keepPreviousData: true,
     });
+    const { data: sd } = useSWR(statsUrl, fetcher, {
+        refreshInterval: 15000,
+        keepPreviousData: true,
+    });
 
     const events: SecurityEvent[] = data?.events ?? [];
-    const stats: Stats | undefined = data?.stats;
-    const riskSources: RiskSource[] = data?.riskSources ?? [];
-    const riskTotal: number = data?.riskTotal ?? 0;
-    const timeline: TimelinePoint[] = data?.timeline ?? [];
-    const geoPoints: GeoPoint[] = data?.geoPoints ?? [];
+    const stats: Stats | undefined = sd?.stats;
+    const riskSources: RiskSource[] = sd?.riskSources ?? [];
+    const riskTotal: number = sd?.riskTotal ?? 0;
+    const timeline: TimelinePoint[] = sd?.timeline ?? [];
+    const geoPoints: GeoPoint[] = sd?.geoPoints ?? [];
 
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
