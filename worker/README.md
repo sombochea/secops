@@ -61,6 +61,34 @@ docker run -e DATABASE_URL=... -p 4000:4000 -v wal-data:/data/wal secops-worker
 
 Set `WEBHOOK_WORKER_URL=http://worker:4000` (or `http://localhost:4000` for local dev) in the app's environment. The Next.js `/api/webhook` endpoint will proxy requests to the worker automatically. If the worker is unavailable, it falls back to direct DB insert.
 
+## Performance Testing
+
+- Benchmark the in-memory queue and batch insert logic:
+
+```bash
+go test ./internal/queue/ -bench=. -benchmem -count=1
+```
+
+- Benchmark the full HTTP handler with a simulated load:
+
+```bash
+go test ./internal/handler/ -bench=. -benchmem -count=1
+```
+
+- Load test with a custom script that simulates concurrent webhook events:
+
+```bash
+# Build
+go build -o bin/secops-loadtest ./cmd/loadtest
+
+# Run against live worker
+WEBHOOK_KEY=whk_xxx ./bin/secops-loadtest \
+  -url http://localhost:4000/api/webhook \
+  -n 100000 -c 50 -batch 50
+```
+
+Flags: `-n` total events, `-c` concurrency, `-batch` events per request. Prints live progress and final results (throughput, latency, success/fail counts).
+
 ## Performance Characteristics
 
 | Metric           | Value                                                     |
