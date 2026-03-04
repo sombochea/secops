@@ -130,6 +130,16 @@ func (w *WAL) ReadSegments() ([]string, error) {
 	return segs, nil
 }
 
+// ClaimSegment atomically renames a segment to .processing so no other worker picks it up.
+// Returns the new path, or empty string if already claimed.
+func ClaimSegment(path string) string {
+	claimed := path + ".processing"
+	if err := os.Rename(path, claimed); err != nil {
+		return "" // another worker got it first
+	}
+	return claimed
+}
+
 // ReadEvents reads all events from a segment file.
 func ReadEvents(path string) ([]Event, error) {
 	f, err := os.Open(path)

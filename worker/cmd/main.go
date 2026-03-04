@@ -196,21 +196,27 @@ func processSegments(ctx context.Context, tag string, wal *queue.WAL, ins *inser
 		if ctx.Err() != nil {
 			return
 		}
-		events, err := queue.ReadEvents(seg)
+		claimed := queue.ClaimSegment(seg)
+		if claimed == "" {
+			continue // another worker got it
+		}
+		events, err := queue.ReadEvents(claimed)
 		if err != nil {
-			log.Printf("%s read %s: %v", tag, seg, err)
+			log.Printf("%s read %s: %v", tag, claimed, err)
 			continue
 		}
 		if len(events) == 0 {
-			queue.Remove(seg)
+			queue.Remove(claimed)
 			continue
 		}
 		n, err := ins.InsertBatch(ctx, events)
 		if err != nil {
-			log.Printf("%s insert %s (%d events): %v", tag, seg, len(events), err)
+			log.Printf("%s insert %s (%d events): %v", tag, claimed, len(events), err)
+			// Rename back so another worker can retry
+			os.Rename(claimed, seg)
 			continue
 		}
-		queue.Remove(seg)
+		queue.Remove(claimed)
 		log.Printf("%s inserted %d events from %s", tag, n, seg)
 	}
 }
@@ -218,17 +224,21 @@ func processSegments(ctx context.Context, tag string, wal *queue.WAL, ins *inser
 func drainSegments(ctx context.Context, wal *queue.WAL, ins *inserter.Inserter) {
 	segs, _ := wal.ReadSegments()
 	for _, seg := range segs {
-		events, err := queue.ReadEvents(seg)
+		claimed := queue.ClaimSegment(seg)
+		if claimed == "" {
+			continue
+		}
+		events, err := queue.ReadEvents(claimed)
 		if err != nil || len(events) == 0 {
-			queue.Remove(seg)
+			queue.Remove(claimed)
 			continue
 		}
 		n, err := ins.InsertBatch(ctx, events)
 		if err != nil {
-			log.Printf("[drain] failed %s: %v", seg, err)
+			log.Printf("[drain] failed %s: %v", claimed, err)
 			continue
 		}
-		queue.Remove(seg)
+		queue.Remove(claimed)
 		log.Printf("[drain] inserted %d events from %s", n, seg)
 	}
 }
