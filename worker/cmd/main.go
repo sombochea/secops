@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -121,6 +122,9 @@ func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInter
 	log.Printf("WAL dir: %s (segment size: %d)", walDir, segmentSize)
 
 	ins := inserter.New(pool, batchSize)
+	if err := ins.EnsureSchema(ctx); err != nil {
+		log.Fatalf("ensure schema: %v", err)
+	}
 	done := make(chan struct{})
 
 	for i := 0; i < numWorkers; i++ {
@@ -209,15 +213,19 @@ func processSegments(ctx context.Context, tag string, wal *queue.WAL, ins *inser
 			queue.Remove(claimed)
 			continue
 		}
-		n, err := ins.InsertBatch(ctx, events)
+		segID := filepath.Base(seg) // original .wal filename as dedup key
+		n, dup, err := ins.InsertSegment(ctx, segID, events)
 		if err != nil {
-			log.Printf("%s insert %s (%d events): %v", tag, claimed, len(events), err)
-			// Rename back so another worker can retry
-			os.Rename(claimed, seg)
+			log.Printf("%s insert %s (%d events): %v", tag, segID, len(events), err)
+			os.Rename(claimed, seg) // unclaim for retry
 			continue
 		}
 		queue.Remove(claimed)
-		log.Printf("%s inserted %d events from %s", tag, n, seg)
+		if dup {
+			log.Printf("%s skipped %s (already processed)", tag, segID)
+		} else {
+			log.Printf("%s inserted %d events from %s", tag, n, segID)
+		}
 	}
 }
 
@@ -233,12 +241,15 @@ func drainSegments(ctx context.Context, wal *queue.WAL, ins *inserter.Inserter) 
 			queue.Remove(claimed)
 			continue
 		}
-		n, err := ins.InsertBatch(ctx, events)
+		segID := filepath.Base(seg)
+		n, dup, err := ins.InsertSegment(ctx, segID, events)
 		if err != nil {
-			log.Printf("[drain] failed %s: %v", claimed, err)
+			log.Printf("[drain] failed %s: %v", segID, err)
 			continue
 		}
 		queue.Remove(claimed)
-		log.Printf("[drain] inserted %d events from %s", n, seg)
+		if !dup {
+			log.Printf("[drain] inserted %d events from %s", n, segID)
+		}
 	}
 }

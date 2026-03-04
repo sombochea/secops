@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sombochea/secops/worker/internal/geoip"
 	"github.com/sombochea/secops/worker/internal/queue"
@@ -22,14 +23,27 @@ func New(pool *pgxpool.Pool, batchSize int) *Inserter {
 	return &Inserter{pool: pool, batchSize: batchSize}
 }
 
-// InsertBatch inserts events into security_event using a single multi-row INSERT.
-// Returns the number of rows inserted.
-func (ins *Inserter) InsertBatch(ctx context.Context, events []queue.Event) (int, error) {
+// EnsureSchema creates the dedup tracking table if it doesn't exist.
+func (ins *Inserter) EnsureSchema(ctx context.Context) error {
+	_, err := ins.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS wal_processed (
+			segment_id TEXT PRIMARY KEY,
+			events_count INT NOT NULL DEFAULT 0,
+			processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)
+	`)
+	return err
+}
+
+// InsertSegment inserts events from a WAL segment atomically with dedup.
+// segmentID is the WAL filename — used to prevent re-processing.
+// Returns (rows inserted, already processed, error).
+func (ins *Inserter) InsertSegment(ctx context.Context, segmentID string, events []queue.Event) (int, bool, error) {
 	if len(events) == 0 {
-		return 0, nil
+		return 0, false, nil
 	}
 
-	// Collect unique IPs for geo lookup
+	// GeoIP enrichment (outside transaction — idempotent)
 	ipSet := make(map[string]struct{})
 	for _, e := range events {
 		if e.SourceIP != "" {
@@ -42,40 +56,62 @@ func (ins *Inserter) InsertBatch(ctx context.Context, events []queue.Event) (int
 	}
 	geoMap := geoip.BatchLookup(ips)
 
+	// Single transaction: check dedup → insert events → record segment
+	tx, err := ins.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Check if already processed
+	var exists bool
+	err = tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM wal_processed WHERE segment_id = $1)`,
+		segmentID,
+	).Scan(&exists)
+	if err != nil {
+		return 0, false, fmt.Errorf("dedup check: %w", err)
+	}
+	if exists {
+		return 0, true, nil
+	}
+
+	// Insert in sub-batches within the same transaction
 	total := 0
-	// Process in sub-batches to avoid exceeding PG parameter limits (65535 params)
 	for i := 0; i < len(events); i += ins.batchSize {
 		end := i + ins.batchSize
 		if end > len(events) {
 			end = len(events)
 		}
-		n, err := ins.insertChunk(ctx, events[i:end], geoMap)
+		n, err := insertChunk(ctx, tx, events[i:end], geoMap)
 		if err != nil {
-			return total, err
+			return total, false, err
 		}
 		total += n
 	}
-	return total, nil
+
+	// Record segment as processed
+	_, err = tx.Exec(ctx,
+		`INSERT INTO wal_processed (segment_id, events_count) VALUES ($1, $2)`,
+		segmentID, total,
+	)
+	if err != nil {
+		return total, false, fmt.Errorf("record segment: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, false, fmt.Errorf("commit: %w", err)
+	}
+	return total, false, nil
 }
 
-func (ins *Inserter) insertChunk(ctx context.Context, events []queue.Event, geoMap map[string]geoip.Result) (int, error) {
-	// 19 columns per row
+func insertChunk(ctx context.Context, tx pgx.Tx, events []queue.Event, geoMap map[string]geoip.Result) (int, error) {
 	const cols = 19
 	values := make([]string, 0, len(events))
 	args := make([]interface{}, 0, len(events)*cols)
 
 	for i, e := range events {
-		ts, err := time.Parse(time.RFC3339, e.Timestamp)
-		if err != nil {
-			ts, err = time.Parse("2006-01-02T15:04:05-0700", e.Timestamp)
-			if err != nil {
-				ts, err = time.Parse("2006-01-02 15:04:05", e.Timestamp)
-				if err != nil {
-					ts = e.ReceivedAt
-				}
-			}
-		}
-
+		ts := parseTimestamp(e.Timestamp, e.ReceivedAt)
 		geo := geoMap[e.SourceIP]
 		event := e.Event
 		if event == "" {
@@ -112,25 +148,25 @@ func (ins *Inserter) insertChunk(ctx context.Context, events []queue.Event, geoM
 			base+15, base+16, base+17, base+18, base+19,
 		))
 		args = append(args,
-			uuid.New().String(),  // id
-			e.OrgID,              // organization_id
-			event,                // event
-			nilStr(status),       // status
-			nilStr(e.AuthMethod), // auth_method
-			nilStr(e.Host),       // host
-			nilStr(e.User),       // user
-			nilStr(e.Ruser),      // ruser
-			nilStr(e.SourceIP),   // source_ip
-			nilStr(e.Service),    // service
-			nilStr(e.Tty),        // tty
-			nilStr(e.PamType),    // pam_type
-			nilStr(e.UA),         // ua
-			geoCountry,           // geo_country
-			geoCity,              // geo_city
-			geoLat,               // geo_lat
-			geoLon,               // geo_lon
-			metaJSON,             // metadata
-			ts,                   // timestamp
+			uuid.New().String(),
+			e.OrgID,
+			event,
+			nilStr(status),
+			nilStr(e.AuthMethod),
+			nilStr(e.Host),
+			nilStr(e.User),
+			nilStr(e.Ruser),
+			nilStr(e.SourceIP),
+			nilStr(e.Service),
+			nilStr(e.Tty),
+			nilStr(e.PamType),
+			nilStr(e.UA),
+			geoCountry,
+			geoCity,
+			geoLat,
+			geoLon,
+			metaJSON,
+			ts,
 		)
 	}
 
@@ -138,13 +174,23 @@ func (ins *Inserter) insertChunk(ctx context.Context, events []queue.Event, geoM
 		(id, organization_id, event, status, auth_method, host, "user", ruser,
 		 source_ip, service, tty, pam_type, ua, geo_country, geo_city,
 		 geo_lat, geo_lon, metadata, timestamp)
-		VALUES %s`, strings.Join(values, ","))
+		VALUES %s
+		ON CONFLICT (id) DO NOTHING`, strings.Join(values, ","))
 
-	tag, err := ins.pool.Exec(ctx, query, args...)
+	tag, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("batch insert: %w", err)
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+func parseTimestamp(s string, fallback time.Time) time.Time {
+	for _, fmt := range []string{time.RFC3339, "2006-01-02T15:04:05-0700", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(fmt, s); err == nil {
+			return t
+		}
+	}
+	return fallback
 }
 
 func nilStr(s string) *string {
@@ -154,7 +200,6 @@ func nilStr(s string) *string {
 	return &s
 }
 
-// computeRisk is a simplified risk scorer matching the JS anomaly engine.
 func computeRisk(e queue.Event) int {
 	score := 0
 	if e.AuthMethod == "invalid_user" {
