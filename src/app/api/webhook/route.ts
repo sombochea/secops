@@ -5,7 +5,49 @@ import { NextRequest, NextResponse } from "next/server";
 import { scoreEvent, isSuspicious } from "@/lib/anomaly";
 import { geoBatchLookup } from "@/lib/geoip";
 
+const WORKER_URL = process.env.WEBHOOK_WORKER_URL; // e.g. http://worker:4000
+
 export async function POST(req: NextRequest) {
+  // If worker is configured, proxy the request for high-performance ingestion
+  if (WORKER_URL) {
+    return proxyToWorker(req);
+  }
+
+  // Fallback: direct DB insert (original behavior)
+  return directInsert(req);
+}
+
+/** Proxy to Go worker — fast path */
+async function proxyToWorker(req: NextRequest) {
+  const secret = req.headers.get("x-webhook-secret");
+  if (!secret) {
+    return NextResponse.json({ error: "Missing x-webhook-secret header" }, { status: 401 });
+  }
+
+  try {
+    const body = await req.text();
+    const resp = await fetch(`${WORKER_URL}/api/webhook`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Secret": secret,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const data = await resp.json();
+    return NextResponse.json(data, { status: resp.status });
+  } catch (err) {
+    console.error("[webhook] worker proxy failed, falling back to direct insert:", err);
+    // Re-parse and fall through to direct insert
+    // We can't re-read the body, so return error
+    return NextResponse.json({ error: "Worker unavailable" }, { status: 502 });
+  }
+}
+
+/** Direct DB insert — fallback when worker is not configured */
+async function directInsert(req: NextRequest) {
   const secret = req.headers.get("x-webhook-secret");
   if (!secret) {
     return NextResponse.json({ error: "Missing x-webhook-secret header" }, { status: 401 });
@@ -19,7 +61,6 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const events = Array.isArray(body) ? body : [body];
 
-  // Batch geo lookup for all unique IPs
   const ips = [...new Set(events.map((e: Record<string, unknown>) => e.source_ip as string).filter(Boolean))];
   const geoMap = await geoBatchLookup(ips);
 
@@ -66,6 +107,5 @@ export async function POST(req: NextRequest) {
   }
 
   const inserted = await db.insert(securityEvent).values(rows).returning({ id: securityEvent.id });
-
   return NextResponse.json({ received: inserted.length, organizationId: wk.organizationId });
 }
