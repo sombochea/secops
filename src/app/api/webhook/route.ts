@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { scoreEvent, isSuspicious } from "@/lib/anomaly";
 import { geoBatchLookup } from "@/lib/geoip";
+import { invalidate } from "@/lib/redis";
 
 const WORKER_URL = process.env.WEBHOOK_WORKER_URL; // e.g. http://worker:4000
 
@@ -92,5 +93,9 @@ async function directInsert(secret: string, body: string) {
   }
 
   const inserted = await db.insert(securityEvent).values(rows).returning({ id: securityEvent.id });
+
+  // Invalidate Redis cache for this org (non-blocking)
+  invalidate(`org:${wk.organizationId}:*`).catch(() => {});
+
   return NextResponse.json({ received: inserted.length, organizationId: wk.organizationId });
 }

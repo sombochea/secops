@@ -90,6 +90,13 @@ function ThreatLevel({ stats }: { stats?: Stats }) {
     );
 }
 
+function formatCompact(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return n.toLocaleString();
+}
+
 function StatBox({
     icon: Icon,
     label,
@@ -101,11 +108,16 @@ function StatBox({
     value: string | number;
     color?: string;
 }) {
+    const raw = typeof value === 'number' ? value : 0;
+    const compact = typeof value === 'number' ? formatCompact(raw) : value;
+    const full = typeof value === 'number' ? raw.toLocaleString() : value;
+    const needsHint = compact !== full;
+
     return (
-        <div className="flex flex-col items-center gap-1 rounded-lg border border-border/50 bg-card/50 px-4 py-3 min-w-[100px]">
+        <div className="flex flex-col items-center gap-1 rounded-lg border border-border/50 bg-card/50 px-4 py-3 min-w-[100px]" title={needsHint ? String(full) : undefined}>
             <Icon className={`h-4 w-4 ${color}`} />
             <span className={`text-2xl font-bold tabular-nums ${color}`}>
-                {value}
+                {compact}
             </span>
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                 {label}
@@ -294,7 +306,7 @@ function LiveFeed({ events, tz, portalContainer, onVisualize }: { events: Securi
     );
 }
 
-function AttackerBoard({ sources, onVisualize }: { sources: RiskSource[]; onVisualize?: (ip: string) => void }) {
+function AttackerBoard({ sources, total, onVisualize }: { sources: RiskSource[]; total: number; onVisualize?: (ip: string) => void }) {
     return (
         <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
@@ -302,8 +314,8 @@ function AttackerBoard({ sources, onVisualize }: { sources: RiskSource[]; onVisu
                 <span className="text-xs font-medium uppercase tracking-wider">
                     Top Attackers
                 </span>
-                <Badge variant="outline" className="text-[9px] ml-auto">
-                    {sources.length}
+                <Badge variant="outline" className="text-[9px] ml-auto" title={`${total.toLocaleString()} total unique attacker IPs`}>
+                    {formatCompact(total)}
                 </Badge>
             </div>
             <div className="flex-1 overflow-y-auto p-1 space-y-0.5">
@@ -332,8 +344,8 @@ function AttackerBoard({ sources, onVisualize }: { sources: RiskSource[]; onVisu
                                     }}
                                 />
                             </div>
-                            <span className="text-muted-foreground tabular-nums w-8 text-right">
-                                {s.count}
+                            <span className="text-muted-foreground tabular-nums w-12 text-right" title={s.count.toLocaleString()}>
+                                {formatCompact(s.count)}
                             </span>
                         </div>
                     </div>
@@ -526,16 +538,17 @@ function CyberKillerMap({ points }: { points: GeoPoint[] }) {
 function Delta({ now, then, label, icon: Icon }: { now: number; then: number; label: string; icon: React.ElementType }) {
   const diff = now - then;
   const pct = then > 0 ? Math.round((diff / then) * 100) : now > 0 ? 100 : 0;
-  const fmt = (n: number) => n >= 10000 ? `${(n / 1000).toFixed(1)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  const clampedPct = Math.min(Math.max(pct, -999), 9999);
+  const pctStr = Math.abs(clampedPct) > 999 ? `${clampedPct > 0 ? "+" : ""}${(clampedPct / 1000).toFixed(1)}k` : `${clampedPct > 0 ? "+" : ""}${clampedPct}`;
   return (
-    <div className="flex flex-col items-center gap-0.5 px-2 py-2 bg-card/50 rounded border border-border/50 overflow-hidden">
+    <div className="flex flex-col items-center gap-0.5 px-2 py-2 bg-card/50 rounded border border-border/50 overflow-hidden" title={`Now: ${now.toLocaleString()} / Then: ${then.toLocaleString()}`}>
       <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
       <div className="flex items-center gap-1 min-w-0">
-        <span className="text-sm font-bold tabular-nums truncate">{fmt(now)}</span>
+        <span className="text-sm font-bold tabular-nums truncate">{formatCompact(now)}</span>
         {diff !== 0 && (
           <span className={`text-[9px] flex items-center gap-0.5 shrink-0 ${diff > 0 ? "text-red-400" : "text-emerald-400"}`}>
             {diff > 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
-            {diff > 0 ? "+" : ""}{pct}%
+            {pctStr}%
           </span>
         )}
         {diff === 0 && <Minus className="h-3 w-3 text-muted-foreground shrink-0" />}
@@ -668,6 +681,7 @@ export function CyberKillerView() {
     const events: SecurityEvent[] = data?.events ?? [];
     const stats: Stats | undefined = data?.stats;
     const riskSources: RiskSource[] = data?.riskSources ?? [];
+    const riskTotal: number = data?.riskTotal ?? 0;
     const timeline: TimelinePoint[] = data?.timeline ?? [];
     const geoPoints: GeoPoint[] = data?.geoPoints ?? [];
 
@@ -788,7 +802,7 @@ export function CyberKillerView() {
                 <StatBox
                     icon={Crosshair}
                     label="Attackers"
-                    value={riskSources.length}
+                    value={riskTotal}
                     color="text-red-500"
                 />
             </div>
@@ -812,7 +826,7 @@ export function CyberKillerView() {
                     ) : (
                         <>
                             <div className="flex-1 overflow-hidden border-b border-border/50">
-                                <AttackerBoard sources={riskSources} onVisualize={openFlow} />
+                                <AttackerBoard sources={riskSources} total={riskTotal} onVisualize={openFlow} />
                             </div>
                             <div className="h-[180px] shrink-0">
                                 <MiniTimeline data={timeline} />

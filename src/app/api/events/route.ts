@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { desc, sql, eq, and, gte, lte, ilike } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { cached } from "@/lib/redis";
 
 const THREAT_FILTER = sql`(${securityEvent.status} = 'failed' OR ${securityEvent.authMethod} = 'invalid_user' OR ${securityEvent.event} = 'ssh_attempt' OR ${securityEvent.status} = 'suspicious')`;
 const THREAT_FILTER_ALIAS = sql.raw(`(e.status = 'failed' OR e.auth_method = 'invalid_user' OR e.event = 'ssh_attempt' OR e.status = 'suspicious')`);
@@ -48,85 +49,18 @@ export async function GET(req: NextRequest) {
   const where = and(...conditions);
   const orgFilter = sql.raw(`e.organization_id = '${orgId}'`);
 
-  // Get whitelisted IPs for this org
-  const whitelistRows = await db
-    .select({ ip: whitelistedIp.ip })
-    .from(whitelistedIp)
-    .where(eq(whitelistedIp.organizationId, orgId));
-  const whitelistedIps = new Set(whitelistRows.map((r) => r.ip));
-
-  // Build timeline date range
-  const timelineFrom = from || "";
-  const timelineTo = to || "";
-  let timelineQuery;
-
-  if (timelineFrom && timelineTo) {
-    const fromDate = new Date(timelineFrom);
-    const toDate = new Date(timelineTo);
-    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 2) {
-      // Hourly buckets for short ranges
-      timelineQuery = db.execute<{ date: string; total: number; threats: number }>(sql`
-        SELECT
-          to_char(d, 'YYYY-MM-DD"T"HH24:00:00') as date,
-          coalesce(count(e.id), 0)::int as total,
-          coalesce(count(e.id) filter (where ${THREAT_FILTER_ALIAS}), 0)::int as threats
-        FROM generate_series(
-          ${timelineFrom}::timestamptz,
-          ${timelineTo}::timestamptz,
-          '1 hour'
-        ) d
-        LEFT JOIN "security_event" e ON date_trunc('hour', e.timestamp) = date_trunc('hour', d) AND ${orgFilter}
-        GROUP BY d
-        ORDER BY d
-      `);
-    } else {
-      timelineQuery = db.execute<{ date: string; total: number; threats: number }>(sql`
-        SELECT
-          d::date::text as date,
-          coalesce(count(e.id), 0)::int as total,
-          coalesce(count(e.id) filter (where ${THREAT_FILTER_ALIAS}), 0)::int as threats
-        FROM generate_series(
-          ${timelineFrom}::date,
-          ${timelineTo}::date,
-          '1 day'
-        ) d
-        LEFT JOIN "security_event" e ON e.timestamp::date = d::date AND ${orgFilter}
-        GROUP BY d::date
-        ORDER BY d::date
-      `);
-    }
-  } else {
-    // Default: last 24 hours, hourly buckets
-    timelineQuery = db.execute<{ date: string; total: number; threats: number }>(sql`
-      SELECT
-        to_char(d, 'YYYY-MM-DD"T"HH24:00:00') as date,
-        coalesce(count(e.id), 0)::int as total,
-        coalesce(count(e.id) filter (where ${THREAT_FILTER_ALIAS}), 0)::int as threats
-      FROM generate_series(
-        now() - interval '23 hours',
-        now(),
-        '1 hour'
-      ) d
-      LEFT JOIN "security_event" e ON date_trunc('hour', e.timestamp) = date_trunc('hour', d) AND ${orgFilter}
-      GROUP BY d
-      ORDER BY d
-    `);
-  }
-
-  // Risk sources: exclude whitelisted IPs
-  const whitelistExclusion = whitelistedIps.size > 0
-    ? sql` AND ${securityEvent.sourceIp} NOT IN (${sql.join([...whitelistedIps].map(ip => sql`${ip}`), sql`, `)})`
-    : sql``;
-
-  const [events, countResult, eventTypes, stats, byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, byCountry, geoPoints, timeline, riskSources, riskTotal] =
+  // ── Cached: expensive aggregations (TTL 15s, invalidated on new events) ──
+  const [whitelistedIps, eventTypes, stats, aggregations, geoPoints, timeline, riskData] =
     await Promise.all([
-      db.select().from(securityEvent).where(where).orderBy(desc(securityEvent.timestamp)).limit(limit).offset((page - 1) * limit),
-      db.select({ count: sql<number>`count(*)::int` }).from(securityEvent).where(where),
-      db.selectDistinct({ event: securityEvent.event }).from(securityEvent).where(orgCondition).orderBy(securityEvent.event),
-      db
-        .select({
+      cached(`org:${orgId}:whitelist`, 60, async () => {
+        const rows = await db.select({ ip: whitelistedIp.ip }).from(whitelistedIp).where(eq(whitelistedIp.organizationId, orgId));
+        return rows.map((r) => r.ip);
+      }),
+      cached(`org:${orgId}:eventTypes`, 30, () =>
+        db.selectDistinct({ event: securityEvent.event }).from(securityEvent).where(orgCondition).orderBy(securityEvent.event).then((r) => r.map((e) => e.event)),
+      ),
+      cached(`org:${orgId}:stats`, 15, () =>
+        db.select({
           total: sql<number>`count(*)::int`,
           uniqueHosts: sql<number>`count(distinct ${securityEvent.host})::int`,
           uniqueIps: sql<number>`count(distinct ${securityEvent.sourceIp})::int`,
@@ -134,50 +68,71 @@ export async function GET(req: NextRequest) {
           last24h: sql<number>`count(*) filter (where ${securityEvent.timestamp} > now() - interval '24 hours')::int`,
           last7d: sql<number>`count(*) filter (where ${securityEvent.timestamp} > now() - interval '7 days')::int`,
           threats: sql<number>`count(*) filter (where ${THREAT_FILTER})::int`,
-        })
-        .from(securityEvent)
-        .where(orgCondition),
-      db.select({ name: securityEvent.event, count: sql<number>`count(*)::int` }).from(securityEvent).where(orgCondition).groupBy(securityEvent.event).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.host, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.host} is not null`)).groupBy(securityEvent.host).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.sourceIp, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.sourceIp} is not null`)).groupBy(securityEvent.sourceIp).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.service, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.service} is not null`)).groupBy(securityEvent.service).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.user, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.user} is not null`)).groupBy(securityEvent.user).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.authMethod, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.authMethod} is not null`)).groupBy(securityEvent.authMethod).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.ua, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.ua} is not null`)).groupBy(securityEvent.ua).orderBy(desc(sql`count(*)`)).limit(10),
-      db.select({ name: securityEvent.geoCountry, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.geoCountry} is not null`)).groupBy(securityEvent.geoCountry).orderBy(desc(sql`count(*)`)).limit(10),
-      db.execute<{ lat: number; lon: number; country: string; city: string; count: number; threats: number }>(sql`
-        SELECT
-          ${securityEvent.geoLat} as lat,
-          ${securityEvent.geoLon} as lon,
-          ${securityEvent.geoCountry} as country,
-          coalesce(${securityEvent.geoCity}, '') as city,
-          count(*)::int as count,
-          count(*) filter (where ${THREAT_FILTER})::int as threats
-        FROM ${securityEvent}
-        WHERE ${securityEvent.geoLat} is not null AND ${orgCondition}
-        GROUP BY ${securityEvent.geoLat}, ${securityEvent.geoLon}, ${securityEvent.geoCountry}, ${securityEvent.geoCity}
-        ORDER BY count(*) DESC
-        LIMIT 50
-      `),
-      timelineQuery,
-      db.execute<{ source_ip: string; count: number; last_seen: string; events: string }>(sql`
-        SELECT
-          ${securityEvent.sourceIp} as source_ip,
-          count(*)::int as count,
-          max(${securityEvent.timestamp})::text as last_seen,
-          string_agg(distinct ${securityEvent.event}, ', ') as events
-        FROM ${securityEvent}
-        WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null AND ${orgCondition}${whitelistExclusion}
-        GROUP BY ${securityEvent.sourceIp}
-        ORDER BY count(*) DESC
-        LIMIT 10
-      `),
-      db.execute<{ total: number }>(sql`
-        SELECT count(distinct ${securityEvent.sourceIp})::int as total
-        FROM ${securityEvent}
-        WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null AND ${orgCondition}${whitelistExclusion}
-      `),
+        }).from(securityEvent).where(orgCondition).then((r) => r[0]),
+      ),
+      cached(`org:${orgId}:agg`, 15, async () => {
+        const [byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, byCountry] = await Promise.all([
+          db.select({ name: securityEvent.event, count: sql<number>`count(*)::int` }).from(securityEvent).where(orgCondition).groupBy(securityEvent.event).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.host, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.host} is not null`)).groupBy(securityEvent.host).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.sourceIp, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.sourceIp} is not null`)).groupBy(securityEvent.sourceIp).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.service, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.service} is not null`)).groupBy(securityEvent.service).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.user, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.user} is not null`)).groupBy(securityEvent.user).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.authMethod, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.authMethod} is not null`)).groupBy(securityEvent.authMethod).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.ua, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.ua} is not null`)).groupBy(securityEvent.ua).orderBy(desc(sql`count(*)`)).limit(10),
+          db.select({ name: securityEvent.geoCountry, count: sql<number>`count(*)::int` }).from(securityEvent).where(and(orgCondition, sql`${securityEvent.geoCountry} is not null`)).groupBy(securityEvent.geoCountry).orderBy(desc(sql`count(*)`)).limit(10),
+        ]);
+        return { byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, byCountry };
+      }),
+      cached(`org:${orgId}:geo`, 30, () =>
+        db.execute<{ lat: number; lon: number; country: string; city: string; count: number; threats: number }>(sql`
+          SELECT ${securityEvent.geoLat} as lat, ${securityEvent.geoLon} as lon,
+            ${securityEvent.geoCountry} as country, coalesce(${securityEvent.geoCity}, '') as city,
+            count(*)::int as count, count(*) filter (where ${THREAT_FILTER})::int as threats
+          FROM ${securityEvent}
+          WHERE ${securityEvent.geoLat} is not null AND ${orgCondition}
+          GROUP BY ${securityEvent.geoLat}, ${securityEvent.geoLon}, ${securityEvent.geoCountry}, ${securityEvent.geoCity}
+          ORDER BY count(*) DESC LIMIT 50
+        `),
+      ),
+      cached(`org:${orgId}:timeline:${from || "24h"}:${to || "now"}`, 15, () =>
+        buildTimelineQuery(orgId, from, to, orgFilter),
+      ),
+      cached(`org:${orgId}:risk`, 15, async () => {
+        const wl = await db.select({ ip: whitelistedIp.ip }).from(whitelistedIp).where(eq(whitelistedIp.organizationId, orgId));
+        const wlSet = new Set(wl.map((r) => r.ip));
+        const whitelistExcl = wlSet.size > 0
+          ? sql` AND ${securityEvent.sourceIp} NOT IN (${sql.join([...wlSet].map(ip => sql`${ip}`), sql`, `)})`
+          : sql``;
+        const [sources, total] = await Promise.all([
+          db.execute<{ source_ip: string; count: number; last_seen: string; events: string }>(sql`
+            SELECT ${securityEvent.sourceIp} as source_ip, count(*)::int as count,
+              max(${securityEvent.timestamp})::text as last_seen,
+              string_agg(distinct ${securityEvent.event}, ', ') as events
+            FROM ${securityEvent}
+            WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null AND ${orgCondition}${whitelistExcl}
+            GROUP BY ${securityEvent.sourceIp} ORDER BY count(*) DESC LIMIT 10
+          `),
+          db.execute<{ total: number }>(sql`
+            SELECT count(distinct ${securityEvent.sourceIp})::int as total
+            FROM ${securityEvent}
+            WHERE ${THREAT_FILTER} AND ${securityEvent.sourceIp} is not null AND ${orgCondition}${whitelistExcl}
+          `),
+        ]);
+        return {
+          sources: (sources ?? []).map((r: Record<string, unknown>) => ({
+            sourceIp: r.source_ip, count: r.count, lastSeen: r.last_seen,
+            events: (r.events as string)?.split(", ") ?? [],
+          })),
+          total: (total as { total: number }[])?.[0]?.total ?? 0,
+        };
+      }),
     ]);
+
+  // ── Live: paginated events + count (must be real-time) ──
+  const [events, countResult] = await Promise.all([
+    db.select().from(securityEvent).where(where).orderBy(desc(securityEvent.timestamp)).limit(limit).offset((page - 1) * limit),
+    db.select({ count: sql<number>`count(*)::int` }).from(securityEvent).where(where),
+  ]);
 
   const total = countResult[0].count;
 
@@ -187,18 +142,51 @@ export async function GET(req: NextRequest) {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
-    eventTypes: eventTypes.map((e) => e.event),
-    stats: stats[0],
-    aggregations: { byType, byHost, byIp, byService, byUser, byAuthMethod, byUa, byCountry },
+    eventTypes,
+    stats,
+    aggregations,
     geoPoints: geoPoints ?? [],
     timeline,
-    riskSources: (riskSources ?? []).map((r: { source_ip: string; count: number; last_seen: string; events: string }) => ({
-      sourceIp: r.source_ip,
-      count: r.count,
-      lastSeen: r.last_seen,
-      events: r.events?.split(", ") ?? [],
-    })),
-    riskTotal: (riskTotal as { total: number }[])?.[0]?.total ?? 0,
-    whitelistedIps: [...whitelistedIps],
+    riskSources: riskData.sources,
+    riskTotal: riskData.total,
+    whitelistedIps,
   });
+}
+
+// ─── Timeline ────────────────────────────────────────────────────────────────
+
+async function buildTimelineQuery(orgId: string, from: string, to: string, orgFilter: ReturnType<typeof sql.raw>) {
+  const timelineFrom = from || "";
+  const timelineTo = to || "";
+
+  if (timelineFrom && timelineTo) {
+    const diffDays = Math.ceil((new Date(timelineTo).getTime() - new Date(timelineFrom).getTime()) / 86400_000);
+    if (diffDays <= 2) {
+      return db.execute<{ date: string; total: number; threats: number }>(sql`
+        SELECT to_char(d, 'YYYY-MM-DD"T"HH24:00:00') as date,
+          coalesce(count(e.id), 0)::int as total,
+          coalesce(count(e.id) filter (where ${THREAT_FILTER_ALIAS}), 0)::int as threats
+        FROM generate_series(${timelineFrom}::timestamptz, ${timelineTo}::timestamptz, '1 hour') d
+        LEFT JOIN "security_event" e ON date_trunc('hour', e.timestamp) = date_trunc('hour', d) AND ${orgFilter}
+        GROUP BY d ORDER BY d
+      `);
+    }
+    return db.execute<{ date: string; total: number; threats: number }>(sql`
+      SELECT d::date::text as date,
+        coalesce(count(e.id), 0)::int as total,
+        coalesce(count(e.id) filter (where ${THREAT_FILTER_ALIAS}), 0)::int as threats
+      FROM generate_series(${timelineFrom}::date, ${timelineTo}::date, '1 day') d
+      LEFT JOIN "security_event" e ON e.timestamp::date = d::date AND ${orgFilter}
+      GROUP BY d::date ORDER BY d::date
+    `);
+  }
+
+  return db.execute<{ date: string; total: number; threats: number }>(sql`
+    SELECT to_char(d, 'YYYY-MM-DD"T"HH24:00:00') as date,
+      coalesce(count(e.id), 0)::int as total,
+      coalesce(count(e.id) filter (where ${THREAT_FILTER_ALIAS}), 0)::int as threats
+    FROM generate_series(now() - interval '23 hours', now(), '1 hour') d
+    LEFT JOIN "security_event" e ON date_trunc('hour', e.timestamp) = date_trunc('hour', d) AND ${orgFilter}
+    GROUP BY d ORDER BY d
+  `);
 }

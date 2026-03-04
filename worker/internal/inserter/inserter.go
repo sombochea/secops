@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sombochea/secops/worker/internal/geoip"
 	"github.com/sombochea/secops/worker/internal/queue"
+	"github.com/sombochea/secops/worker/internal/rcache"
 )
 
 type Inserter struct {
@@ -102,6 +103,16 @@ func (ins *Inserter) InsertSegment(ctx context.Context, segmentID string, events
 	if err := tx.Commit(ctx); err != nil {
 		return 0, false, fmt.Errorf("commit: %w", err)
 	}
+
+	// Invalidate Redis cache for affected orgs
+	orgs := make(map[string]struct{})
+	for _, e := range events {
+		orgs[e.OrgID] = struct{}{}
+	}
+	for orgID := range orgs {
+		rcache.InvalidateOrg(orgID)
+	}
+
 	return total, false, nil
 }
 

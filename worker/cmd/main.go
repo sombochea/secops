@@ -18,6 +18,7 @@ import (
 	"github.com/sombochea/secops/worker/internal/handler"
 	"github.com/sombochea/secops/worker/internal/inserter"
 	"github.com/sombochea/secops/worker/internal/queue"
+	"github.com/sombochea/secops/worker/internal/rcache"
 	"github.com/sombochea/secops/worker/internal/scorer"
 )
 
@@ -97,6 +98,8 @@ func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInter
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	rcache.Init()
 
 	poolCfg, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
