@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sombochea/secops/worker/internal/balancer"
 	"github.com/sombochea/secops/worker/internal/handler"
 	"github.com/sombochea/secops/worker/internal/inserter"
 	"github.com/sombochea/secops/worker/internal/queue"
@@ -25,25 +27,80 @@ func main() {
 	batchSize := flag.Int("batch", 500, "max rows per INSERT statement")
 	flushInterval := flag.Duration("flush", 2*time.Second, "max time before flushing WAL segment")
 	segmentSize := flag.Int("segment-size", 10000, "max events per WAL segment file")
+
+	mode := flag.String("mode", "worker", "run mode: worker | balancer")
+	backends := flag.String("backends", os.Getenv("BACKENDS"), "comma-separated backend URLs (balancer mode)")
+	strategy := flag.String("strategy", "round-robin", "balancer strategy: round-robin | least-conn | hash-org")
 	flag.Parse()
 
-	if *dbURL == "" {
+	if *mode == "balancer" {
+		runBalancer(*addr, *backends, *strategy)
+		return
+	}
+	runWorker(*addr, *dbURL, *walDir, *workers, *batchSize, *flushInterval, *segmentSize)
+}
+
+// ─── Balancer Mode ───────────────────────────────────────────────────────────
+
+func runBalancer(addr, backendsStr, strategyStr string) {
+	if backendsStr == "" {
+		log.Fatal("BACKENDS is required in balancer mode (comma-separated URLs)")
+	}
+	urls := strings.Split(backendsStr, ",")
+	for i := range urls {
+		urls[i] = strings.TrimSpace(urls[i])
+	}
+
+	s := balancer.RoundRobin
+	switch strategyStr {
+	case "least-conn":
+		s = balancer.LeastConnections
+	case "hash-org":
+		s = balancer.ConsistentHashOrg
+	}
+
+	lb := balancer.New(urls, s)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      lb,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	log.Printf("[balancer] strategy=%s backends=%v addr=%s", s, urls, addr)
+	go func() {
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Fatalf("http: %v", err)
+		}
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+	log.Println("shutting down balancer...")
+	srv.Shutdown(context.Background())
+}
+
+// ─── Worker Mode ─────────────────────────────────────────────────────────────
+
+func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInterval time.Duration, segmentSize int) {
+	if dbURL == "" {
 		log.Fatal("DATABASE_URL is required (flag -db or env)")
 	}
-	if *walDir == "" {
-		*walDir = "/tmp/secops-wal"
+	if walDir == "" {
+		walDir = "/tmp/secops-wal"
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// PostgreSQL connection pool
-	poolCfg, err := pgxpool.ParseConfig(*dbURL)
+	poolCfg, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
 		log.Fatalf("parse db url: %v", err)
 	}
-	poolCfg.MaxConns = int32(*workers * 2)
-	poolCfg.MinConns = int32(*workers)
+	poolCfg.MaxConns = int32(numWorkers * 2)
+	poolCfg.MinConns = int32(numWorkers)
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
@@ -56,26 +113,23 @@ func main() {
 	}
 	log.Printf("connected to PostgreSQL (pool: %d-%d conns)", poolCfg.MinConns, poolCfg.MaxConns)
 
-	// WAL
-	wal, err := queue.NewWAL(*walDir, *segmentSize)
+	wal, err := queue.NewWAL(walDir, segmentSize)
 	if err != nil {
 		log.Fatalf("init WAL: %v", err)
 	}
 	defer wal.Close()
-	log.Printf("WAL dir: %s (segment size: %d)", *walDir, *segmentSize)
+	log.Printf("WAL dir: %s (segment size: %d)", walDir, segmentSize)
 
-	// Start consumer workers
-	ins := inserter.New(pool, *batchSize)
+	ins := inserter.New(pool, batchSize)
 	done := make(chan struct{})
 
-	for i := 0; i < *workers; i++ {
-		go consumer(ctx, i, wal, ins, *flushInterval, done)
+	for i := 0; i < numWorkers; i++ {
+		go consumer(ctx, i, wal, ins, flushInterval, done)
 	}
-	log.Printf("started %d insert workers (batch: %d, flush: %s)", *workers, *batchSize, *flushInterval)
+	log.Printf("started %d insert workers (batch: %d, flush: %s)", numWorkers, batchSize, flushInterval)
 
-	// Flush ticker — rotates WAL segment periodically so consumers can pick it up
 	go func() {
-		ticker := time.NewTicker(*flushInterval)
+		ticker := time.NewTicker(flushInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -87,10 +141,9 @@ func main() {
 		}
 	}()
 
-	// HTTP server
 	h := handler.New(wal, pool)
 	srv := &http.Server{
-		Addr:         *addr,
+		Addr:         addr,
 		Handler:      h,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -98,13 +151,12 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("listening on %s", *addr)
+		log.Printf("listening on %s", addr)
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatalf("http: %v", err)
 		}
 	}()
 
-	// Graceful shutdown
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
@@ -113,13 +165,12 @@ func main() {
 	cancel()
 	srv.Shutdown(context.Background())
 	wal.ForceRotate()
-
-	// Drain remaining segments
 	drainSegments(context.Background(), wal, ins)
-
 	close(done)
 	log.Println("shutdown complete")
 }
+
+// ─── Consumer ────────────────────────────────────────────────────────────────
 
 func consumer(ctx context.Context, id int, wal *queue.WAL, ins *inserter.Inserter, flushInterval time.Duration, done chan struct{}) {
 	tag := fmt.Sprintf("[worker-%d]", id)
@@ -141,7 +192,6 @@ func processSegments(ctx context.Context, tag string, wal *queue.WAL, ins *inser
 		log.Printf("%s read segments: %v", tag, err)
 		return
 	}
-
 	for _, seg := range segs {
 		if ctx.Err() != nil {
 			return
@@ -155,14 +205,11 @@ func processSegments(ctx context.Context, tag string, wal *queue.WAL, ins *inser
 			queue.Remove(seg)
 			continue
 		}
-
 		n, err := ins.InsertBatch(ctx, events)
 		if err != nil {
 			log.Printf("%s insert %s (%d events): %v", tag, seg, len(events), err)
-			// Don't remove — will retry on next pass
 			continue
 		}
-
 		queue.Remove(seg)
 		log.Printf("%s inserted %d events from %s", tag, n, seg)
 	}

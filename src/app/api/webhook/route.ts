@@ -8,58 +8,45 @@ import { geoBatchLookup } from "@/lib/geoip";
 const WORKER_URL = process.env.WEBHOOK_WORKER_URL; // e.g. http://worker:4000
 
 export async function POST(req: NextRequest) {
-  // If worker is configured, proxy the request for high-performance ingestion
+  const secret = req.headers.get("x-webhook-secret");
+  if (!secret) {
+    return NextResponse.json({ error: "Missing x-webhook-secret header" }, { status: 401 });
+  }
+
+  // Read body once — reusable for proxy and fallback
+  const body = await req.text();
+
   if (WORKER_URL) {
-    return proxyToWorker(req);
+    try {
+      const resp = await fetch(`${WORKER_URL}/api/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webhook-Secret": secret,
+        },
+        body,
+        signal: AbortSignal.timeout(10_000),
+      });
+      const data = await resp.json();
+      return NextResponse.json(data, { status: resp.status });
+    } catch (err) {
+      console.error("[webhook] worker proxy failed, falling back to direct insert:", err);
+    }
   }
 
-  // Fallback: direct DB insert (original behavior)
-  return directInsert(req);
+  // Fallback: direct DB insert
+  console.warn("[webhook] no worker URL configured or worker proxy failed, processing webhook directly in API route");
+  return directInsert(secret, body);
 }
 
-/** Proxy to Go worker — fast path */
-async function proxyToWorker(req: NextRequest) {
-  const secret = req.headers.get("x-webhook-secret");
-  if (!secret) {
-    return NextResponse.json({ error: "Missing x-webhook-secret header" }, { status: 401 });
-  }
-
-  try {
-    const body = await req.text();
-    const resp = await fetch(`${WORKER_URL}/api/webhook`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Webhook-Secret": secret,
-      },
-      body,
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    const data = await resp.json();
-    return NextResponse.json(data, { status: resp.status });
-  } catch (err) {
-    console.error("[webhook] worker proxy failed, falling back to direct insert:", err);
-    // Re-parse and fall through to direct insert
-    // We can't re-read the body, so return error
-    return NextResponse.json({ error: "Worker unavailable" }, { status: 502 });
-  }
-}
-
-/** Direct DB insert — fallback when worker is not configured */
-async function directInsert(req: NextRequest) {
-  const secret = req.headers.get("x-webhook-secret");
-  if (!secret) {
-    return NextResponse.json({ error: "Missing x-webhook-secret header" }, { status: 401 });
-  }
-
+async function directInsert(secret: string, body: string) {
   const [wk] = await db.select().from(webhookKey).where(eq(webhookKey.key, secret)).limit(1);
   if (!wk) {
-    return NextResponse.json({ error: "Invalid webhook secret. Create a webhook key in Settings → Webhook Keys." }, { status: 401 });
+    return NextResponse.json({ error: "Invalid webhook secret." }, { status: 401 });
   }
 
-  const body = await req.json();
-  const events = Array.isArray(body) ? body : [body];
+  const parsed = JSON.parse(body);
+  const events = Array.isArray(parsed) ? parsed : [parsed];
 
   const ips = [...new Set(events.map((e: Record<string, unknown>) => e.source_ip as string).filter(Boolean))];
   const geoMap = await geoBatchLookup(ips);
@@ -67,11 +54,9 @@ async function directInsert(req: NextRequest) {
   const rows = [];
   for (const e of events) {
     const ts = new Date(e.timestamp as string);
-    if (isNaN(ts.getTime())) {
-      console.warn("[webhook] skipping event with invalid timestamp:", e.timestamp);
-      continue;
-    }
-    const parsed = {
+    if (isNaN(ts.getTime())) continue;
+
+    const ev = {
       organizationId: wk.organizationId,
       event: (e.event as string) || "unknown",
       status: (e.status as string) ?? null,
@@ -88,17 +73,17 @@ async function directInsert(req: NextRequest) {
       timestamp: ts,
     };
 
-    const geo = parsed.sourceIp ? geoMap.get(parsed.sourceIp) : undefined;
-    const riskScore = await scoreEvent(parsed);
+    const geo = ev.sourceIp ? geoMap.get(ev.sourceIp) : undefined;
+    const riskScore = await scoreEvent(ev);
 
     rows.push({
-      ...parsed,
+      ...ev,
       geoCountry: geo?.country ?? null,
       geoCity: geo?.city ?? null,
       geoLat: geo?.lat ?? null,
       geoLon: geo?.lon ?? null,
       riskScore,
-      status: parsed.status === "failed" ? "failed" : isSuspicious(riskScore) ? "suspicious" : parsed.status,
+      status: ev.status === "failed" ? "failed" : isSuspicious(riskScore) ? "suspicious" : ev.status,
     });
   }
 
