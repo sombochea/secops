@@ -18,6 +18,7 @@ import (
 	"github.com/sombochea/secops/worker/internal/handler"
 	"github.com/sombochea/secops/worker/internal/inserter"
 	"github.com/sombochea/secops/worker/internal/queue"
+	"github.com/sombochea/secops/worker/internal/scorer"
 )
 
 func main() {
@@ -32,13 +33,14 @@ func main() {
 	mode := flag.String("mode", "worker", "run mode: worker | balancer")
 	backends := flag.String("backends", os.Getenv("BACKENDS"), "comma-separated backend URLs (balancer mode)")
 	strategy := flag.String("strategy", "round-robin", "balancer strategy: round-robin | least-conn | hash-org")
+	scoreInterval := flag.Duration("score-interval", 30*time.Second, "background ML scorer interval")
 	flag.Parse()
 
 	if *mode == "balancer" {
 		runBalancer(*addr, *backends, *strategy)
 		return
 	}
-	runWorker(*addr, *dbURL, *walDir, *workers, *batchSize, *flushInterval, *segmentSize)
+	runWorker(*addr, *dbURL, *walDir, *workers, *batchSize, *flushInterval, *segmentSize, *scoreInterval)
 }
 
 // ─── Balancer Mode ───────────────────────────────────────────────────────────
@@ -85,7 +87,7 @@ func runBalancer(addr, backendsStr, strategyStr string) {
 
 // ─── Worker Mode ─────────────────────────────────────────────────────────────
 
-func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInterval time.Duration, segmentSize int) {
+func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInterval time.Duration, segmentSize int, scoreInterval time.Duration) {
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is required (flag -db or env)")
 	}
@@ -132,6 +134,10 @@ func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInter
 	}
 	log.Printf("started %d insert workers (batch: %d, flush: %s)", numWorkers, batchSize, flushInterval)
 
+	// Background ML scorer
+	sc := scorer.New(pool, 500, scoreInterval)
+	go sc.Run(ctx)
+
 	go func() {
 		ticker := time.NewTicker(flushInterval)
 		defer ticker.Stop()
@@ -170,6 +176,7 @@ func runWorker(addr, dbURL, walDir string, numWorkers, batchSize int, flushInter
 	srv.Shutdown(context.Background())
 	wal.ForceRotate()
 	drainSegments(context.Background(), wal, ins)
+	sc.RunOnce(context.Background())
 	close(done)
 	log.Println("shutdown complete")
 }

@@ -106,7 +106,7 @@ func (ins *Inserter) InsertSegment(ctx context.Context, segmentID string, events
 }
 
 func insertChunk(ctx context.Context, tx pgx.Tx, events []queue.Event, geoMap map[string]geoip.Result) (int, error) {
-	const cols = 19
+	const cols = 20
 	values := make([]string, 0, len(events))
 	args := make([]interface{}, 0, len(events)*cols)
 
@@ -118,8 +118,8 @@ func insertChunk(ctx context.Context, tx pgx.Tx, events []queue.Event, geoMap ma
 			event = "unknown"
 		}
 
+		riskScore := preliminaryRisk(e)
 		status := e.Status
-		riskScore := computeRisk(e)
 		if status != "failed" && riskScore >= 60 {
 			status = "suspicious"
 		}
@@ -142,10 +142,10 @@ func insertChunk(ctx context.Context, tx pgx.Tx, events []queue.Event, geoMap ma
 
 		base := i * cols
 		values = append(values, fmt.Sprintf(
-			"($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+			"($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
 			base+1, base+2, base+3, base+4, base+5, base+6, base+7,
 			base+8, base+9, base+10, base+11, base+12, base+13, base+14,
-			base+15, base+16, base+17, base+18, base+19,
+			base+15, base+16, base+17, base+18, base+19, base+20,
 		))
 		args = append(args,
 			uuid.New().String(),
@@ -166,6 +166,7 @@ func insertChunk(ctx context.Context, tx pgx.Tx, events []queue.Event, geoMap ma
 			geoLat,
 			geoLon,
 			metaJSON,
+			riskScore,
 			ts,
 		)
 	}
@@ -173,7 +174,7 @@ func insertChunk(ctx context.Context, tx pgx.Tx, events []queue.Event, geoMap ma
 	query := fmt.Sprintf(`INSERT INTO security_event
 		(id, organization_id, event, status, auth_method, host, "user", ruser,
 		 source_ip, service, tty, pam_type, ua, geo_country, geo_city,
-		 geo_lat, geo_lon, metadata, timestamp)
+		 geo_lat, geo_lon, metadata, risk_score, timestamp)
 		VALUES %s
 		ON CONFLICT (id) DO NOTHING`, strings.Join(values, ","))
 
@@ -200,7 +201,9 @@ func nilStr(s string) *string {
 	return &s
 }
 
-func computeRisk(e queue.Event) int {
+// preliminaryRisk computes a fast static score at insert time.
+// The background scorer will refine this with full DB context.
+func preliminaryRisk(e queue.Event) int {
 	score := 0
 	if e.AuthMethod == "invalid_user" {
 		score += 40
