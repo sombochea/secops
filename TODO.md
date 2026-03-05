@@ -114,3 +114,15 @@
 - **Licensing**: Use a permissive open-source license (e.g., MIT) to allow for wide adoption and customization by organizations of all sizes.
 - **Support and Resources**: Provide comprehensive documentation, including setup guides, API references, and troubleshooting tips, to help users get the most out of the SecOps Center and ensure a smooth implementation process.
 - **Future Roadmap**: Outline potential future features and improvements, such as integration with additional data sources, machine learning-based threat detection, and enhanced collaboration tools for SOC teams, to keep users informed about the ongoing development of the project.
+
+### High Performance and Scalability
+
+- [x] **Worker**: Implement a worker process that can handle the ingestion and processing of security event data in real-time, ensuring that the dashboard remains responsive and up-to-date even under heavy load. Improve webhook handle a large requests at the same time and concurrently: `/api/webhook`. Ensure the requests are insert sequentially (support batch) and queuing, no loss any events. Think about system design to handle thounsand or million requests at the same time, persistence, atomicity and reliability. Create a high performance and distributed worker (written in Go or Rust) to handle multiple and queuing system.
+- **Efficient Data Handling**: Implement efficient data processing and storage mechanisms to handle large volumes of security event data without performance degradation.
+- **Scalable Architecture**: Design the dashboard with a scalable architecture that can accommodate growing data volumes and user bases, ensuring that it remains responsive and effective as the organization’s security monitoring needs evolve.
+- **Real-time Updates**: Ensure that the dashboard can provide real-time updates on security events, allowing SOC analysts to respond to threats as they happen without delays.
+- **Optimized Queries**: Use optimized database queries and indexing to ensure that filtering and searching through security events is fast and efficient, even as the dataset grows.
+- [x] **Load Balancing**: Implement load balancing strategies to distribute the processing of security event data across multiple servers or instances, ensuring that the dashboard remains responsive under heavy load.
+- **Caching Mechanisms**: Use caching mechanisms to store frequently accessed data and reduce the load on the database, improving the overall performance of the dashboard.
+- **Asynchronous Processing**: Implement asynchronous processing for tasks that may take longer to complete (e.g., complex event correlation, machine learning analysis) to ensure that the dashboard remains responsive and does not block user interactions while these tasks are being processed.
+- **Monitoring and Alerting**: Set up monitoring and alerting for the dashboard itself to ensure that any performance issues or errors are quickly identified and addressed, maintaining the reliability and effectiveness of the SOC dashboard for users.

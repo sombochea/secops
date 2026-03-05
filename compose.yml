@@ -1,4 +1,23 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - internal
+
   db:
     image: postgres:18-alpine
     restart: unless-stopped
@@ -16,6 +35,62 @@ services:
     networks:
       - internal
 
+  worker:
+    image: ${COMPOSE_PROJECT_NAME:-secops}-worker:latest
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/secops
+      WAL_DIR: /data/wal
+      REDIS_URL: redis://redis:6379
+    command:
+      ["-addr", ":4000", "-workers", "4", "-batch", "500", "-flush", "2s"]
+    volumes:
+      - worker-wal:/data/wal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
+    networks:
+      - internal
+
+  # Load balancer — activate with: docker compose --profile scaled up
+  balancer:
+    image: ${COMPOSE_PROJECT_NAME:-secops}-worker:latest
+    restart: unless-stopped
+    command:
+      [
+        "-mode",
+        "balancer",
+        "-addr",
+        ":4000",
+        "-strategy",
+        "${LB_STRATEGY:-round-robin}",
+      ]
+    environment:
+      BACKENDS: ${WORKER_BACKENDS:-http://worker:4000}
+    ports:
+      - "${WORKER_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      - worker
+    profiles:
+      - scaled
+    networks:
+      - internal
+
   app:
     image: ${COMPOSE_PROJECT_NAME:-secops}-app:latest
     build:
@@ -29,8 +104,11 @@ services:
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/secops
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      WEBHOOK_WORKER_URL: http://worker:4000
+      REDIS_URL: redis://redis:6379
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      test:
+        ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 3s
       start_period: 40s
@@ -43,6 +121,7 @@ services:
 
 volumes:
   pgdata:
+  worker-wal:
 
 networks:
   internal:

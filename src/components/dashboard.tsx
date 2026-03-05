@@ -31,22 +31,37 @@ export function Dashboard({ userName }: { userName: string }) {
     setDateParams(rangeToParams(r));
   }, []);
 
-  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-  if (filters.q) params.set("q", filters.q);
-  if (filters.event) params.set("event", filters.event);
-  if (filters.host) params.set("host", filters.host);
-  if (filters.source_ip) params.set("source_ip", filters.source_ip);
-  if (filters.user) params.set("user", filters.user);
-  if (filters.service) params.set("service", filters.service);
-  if (filters.ua) params.set("ua", filters.ua);
-  if (dateParams.from) params.set("from", dateParams.from);
-  if (dateParams.to) params.set("to", dateParams.to);
+  // Events list params (filters + pagination)
+  const eventsParams = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (filters.q) eventsParams.set("q", filters.q);
+  if (filters.event) eventsParams.set("event", filters.event);
+  if (filters.host) eventsParams.set("host", filters.host);
+  if (filters.source_ip) eventsParams.set("source_ip", filters.source_ip);
+  if (filters.user) eventsParams.set("user", filters.user);
+  if (filters.service) eventsParams.set("service", filters.service);
+  if (filters.ua) eventsParams.set("ua", filters.ua);
+  if (dateParams.from) eventsParams.set("from", dateParams.from);
+  if (dateParams.to) eventsParams.set("to", dateParams.to);
 
-  const apiUrl = useMemo(() => `/api/events?${params}`, [params.toString()]);
-  const { data, isLoading } = useSWR(apiUrl, fetcher, {
+  const eventsUrl = useMemo(() => `/api/events?${eventsParams}`, [eventsParams.toString()]);
+
+  // Stats params (only needs from/to for timeline)
+  const statsParams = new URLSearchParams();
+  if (dateParams.from) statsParams.set("from", dateParams.from);
+  if (dateParams.to) statsParams.set("to", dateParams.to);
+  const statsUrl = useMemo(() => `/api/events/stats?${statsParams}`, [statsParams.toString()]);
+
+  // Parallel fetches: events (live) + stats (cached, fast)
+  const { data: eventsData, isLoading: eventsLoading } = useSWR(eventsUrl, fetcher, {
     refreshInterval: 10000,
     keepPreviousData: true,
   });
+  const { data: statsData, isLoading: statsLoading } = useSWR(statsUrl, fetcher, {
+    refreshInterval: 15000,
+    keepPreviousData: true,
+  });
+
+  const isLoading = eventsLoading && !eventsData;
 
   const handleFilterChange = useCallback((f: Filters) => {
     setFilters(f);
@@ -66,39 +81,40 @@ export function Dashboard({ userName }: { userName: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ip }),
     });
-    mutate(apiUrl);
-  }, [apiUrl]);
+    mutate(eventsUrl);
+    mutate(statsUrl);
+  }, [eventsUrl, statsUrl]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <DashboardHeader userName={userName} onAboutClick={() => setAboutOpen(true)} />
       <main className="mx-auto max-w-7xl w-full flex-1 px-4 py-6 space-y-6 sm:px-6">
-        <StatsCards stats={data?.stats} loading={isLoading} />
+        <StatsCards stats={statsData?.stats} loading={statsLoading && !statsData} />
         <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
           <ActivityTimeline
-            data={data?.timeline}
-            loading={isLoading}
+            data={statsData?.timeline}
+            loading={statsLoading && !statsData}
             range={timelineRange}
             onRangeChange={handleRangeChange}
           />
           <RiskSources
-            sources={data?.riskSources}
-            loading={isLoading}
-            total={data?.riskTotal}
+            sources={statsData?.riskSources}
+            loading={statsLoading && !statsData}
+            total={statsData?.riskTotal}
             onSourceClick={(ip) => handleFilterChange({ ...filters, source_ip: ip })}
             onWhitelist={handleWhitelist}
-            whitelistedIps={data?.whitelistedIps}
+            whitelistedIps={statsData?.whitelistedIps}
           />
         </div>
-        <EventCharts aggregations={data?.aggregations} loading={isLoading} onSegmentClick={handleChartClick} />
-        <ThreatMap points={data?.geoPoints ?? []} loading={isLoading} />
-        <EventFilters filters={filters} onChange={handleFilterChange} eventTypes={data?.eventTypes ?? []} />
+        <EventCharts aggregations={statsData?.aggregations} loading={statsLoading && !statsData} onSegmentClick={handleChartClick} />
+        <ThreatMap points={statsData?.geoPoints ?? []} loading={statsLoading && !statsData} />
+        <EventFilters filters={filters} onChange={handleFilterChange} eventTypes={statsData?.eventTypes ?? []} />
         <EventsTable
-          events={data?.events ?? []}
+          events={eventsData?.events ?? []}
           loading={isLoading}
           page={page}
-          total={data?.total ?? 0}
-          totalPages={data?.totalPages ?? 0}
+          total={eventsData?.total ?? 0}
+          totalPages={eventsData?.totalPages ?? 0}
           limit={limit}
           onPageChange={setPage}
           onLimitChange={(l) => { setLimit(l); setPage(1); }}

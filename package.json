@@ -1,6 +1,6 @@
 {
   "name": "secops",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -15,12 +15,13 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.10.1",
-    "better-auth": "^1.5.1",
+    "better-auth": "^1.5.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.10.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.576.0",
     "next": "16.1.6",

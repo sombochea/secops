@@ -3,6 +3,7 @@ import { securityEvent } from "@/db/schema";
 import { eq, and, gte, sql, desc } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { getVerifiedOrg } from "@/lib/verify-org";
+import { cached } from "@/lib/redis";
 
 const THREAT_COND = sql`(status = 'failed' OR auth_method = 'invalid_user' OR event = 'ssh_attempt' OR status = 'suspicious')`;
 
@@ -12,212 +13,115 @@ export async function GET(req: NextRequest) {
   if (!orgId) return NextResponse.json({ error: "No active organization" }, { status: 400 });
 
   const hours = Math.min(Math.max(1, parseInt(req.nextUrl.searchParams.get("hours") ?? "72")), 720);
+  const data = await cached(`org:${orgId}:threats:${hours}`, 15, () => fetchThreats(orgId, hours));
+  return NextResponse.json(data);
+}
+
+async function fetchThreats(orgId: string, hours: number) {
   const since = new Date(Date.now() - hours * 3600_000).toISOString();
   const sinceDate = new Date(since);
   const orgCond = eq(securityEvent.organizationId, orgId);
   const timeCond = gte(securityEvent.timestamp, sinceDate);
 
-  // Run all aggregations in parallel
-  const [
-    summaryRows,
-    iocRows,
-    techniqueRows,
-    countryRows,
-    timelineRows,
-    recentThreats,
-    targetRows,
-  ] = await Promise.all([
-    // 1. Summary stats
-    db.execute<{ total: number; threats: number; unique_ips: number; unique_countries: number }>(sql`
-      SELECT
-        count(*)::int as total,
-        count(*) filter (where ${THREAT_COND})::int as threats,
-        count(distinct source_ip) filter (where ${THREAT_COND})::int as unique_ips,
-        count(distinct geo_country) filter (where ${THREAT_COND} and geo_country is not null)::int as unique_countries
-      FROM security_event
-      WHERE organization_id = ${orgId} AND timestamp >= ${since}
-    `),
-
-    // 2. Top threat IPs (IOCs)
-    db.execute<{
-      source_ip: string; count: number; threats: number;
-      countries: string; hosts: number; users: number;
-      first_seen: string; last_seen: string; max_risk: number;
-      auth_methods: string; events: string;
-    }>(sql`
-      SELECT
-        source_ip,
-        count(*)::int as count,
-        count(*) filter (where ${THREAT_COND})::int as threats,
-        string_agg(distinct geo_country, ', ') filter (where geo_country is not null) as countries,
-        count(distinct host)::int as hosts,
-        count(distinct "user")::int as users,
-        min(timestamp)::text as first_seen,
-        max(timestamp)::text as last_seen,
-        coalesce(max(risk_score), 0)::int as max_risk,
-        string_agg(distinct auth_method, ', ') filter (where auth_method is not null) as auth_methods,
-        string_agg(distinct event, ', ') as events
-      FROM security_event
-      WHERE organization_id = ${orgId} AND timestamp >= ${since}
-        AND source_ip IS NOT NULL AND ${THREAT_COND}
-      GROUP BY source_ip
-      ORDER BY threats DESC, max_risk DESC
-      LIMIT 50
-    `),
-
-    // 3. Attack techniques (event + auth_method combos mapped to MITRE-like categories)
-    db.execute<{ event: string; auth_method: string; status: string; count: number }>(sql`
-      SELECT event, auth_method, status, count(*)::int as count
-      FROM security_event
-      WHERE organization_id = ${orgId} AND timestamp >= ${since} AND ${THREAT_COND}
-      GROUP BY event, auth_method, status
-      ORDER BY count DESC
-      LIMIT 30
-    `),
-
-    // 4. Threat geography
-    db.execute<{ country: string; count: number; unique_ips: number }>(sql`
-      SELECT
-        coalesce(geo_country, 'Unknown') as country,
-        count(*)::int as count,
-        count(distinct source_ip)::int as unique_ips
-      FROM security_event
-      WHERE organization_id = ${orgId} AND timestamp >= ${since} AND ${THREAT_COND}
-        AND source_ip IS NOT NULL
-      GROUP BY geo_country
-      ORDER BY count DESC
-      LIMIT 30
-    `),
-
-    // 5. Threat timeline (hourly for <=48h, daily otherwise)
-    hours <= 48
-      ? db.execute<{ bucket: string; threats: number; total: number }>(sql`
-          SELECT
-            to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD"T"HH24:00') as bucket,
-            count(*) filter (where ${THREAT_COND})::int as threats,
-            count(*)::int as total
-          FROM security_event
-          WHERE organization_id = ${orgId} AND timestamp >= ${since}
-          GROUP BY 1 ORDER BY 1
-        `)
-      : db.execute<{ bucket: string; threats: number; total: number }>(sql`
-          SELECT
-            to_char(date_trunc('day', timestamp), 'YYYY-MM-DD') as bucket,
-            count(*) filter (where ${THREAT_COND})::int as threats,
-            count(*)::int as total
-          FROM security_event
-          WHERE organization_id = ${orgId} AND timestamp >= ${since}
-          GROUP BY 1 ORDER BY 1
-        `),
-
-    // 6. Recent high-severity threat events
-    db
-      .select({
-        id: securityEvent.id,
-        event: securityEvent.event,
-        status: securityEvent.status,
-        authMethod: securityEvent.authMethod,
-        sourceIp: securityEvent.sourceIp,
-        host: securityEvent.host,
-        user: securityEvent.user,
-        service: securityEvent.service,
-        geoCountry: securityEvent.geoCountry,
-        riskScore: securityEvent.riskScore,
+  const [summaryRows, iocRows, techniqueRows, countryRows, timelineRows, recentThreats, targetRows] =
+    await Promise.all([
+      db.execute(sql`
+        SELECT count(*)::int as total,
+          count(*) filter (where ${THREAT_COND})::int as threats,
+          count(distinct source_ip) filter (where ${THREAT_COND})::int as unique_ips,
+          count(distinct geo_country) filter (where ${THREAT_COND} and geo_country is not null)::int as unique_countries
+        FROM security_event WHERE organization_id = ${orgId} AND timestamp >= ${since}
+      `),
+      db.execute(sql`
+        SELECT source_ip, count(*)::int as count,
+          count(*) filter (where ${THREAT_COND})::int as threats,
+          string_agg(distinct geo_country, ', ') filter (where geo_country is not null) as countries,
+          count(distinct host)::int as hosts, count(distinct "user")::int as users,
+          min(timestamp)::text as first_seen, max(timestamp)::text as last_seen,
+          coalesce(max(risk_score), 0)::int as max_risk,
+          string_agg(distinct auth_method, ', ') filter (where auth_method is not null) as auth_methods,
+          string_agg(distinct event, ', ') as events
+        FROM security_event
+        WHERE organization_id = ${orgId} AND timestamp >= ${since} AND source_ip IS NOT NULL AND ${THREAT_COND}
+        GROUP BY source_ip ORDER BY threats DESC, max_risk DESC LIMIT 50
+      `),
+      db.execute(sql`
+        SELECT event, auth_method, status, count(*)::int as count
+        FROM security_event WHERE organization_id = ${orgId} AND timestamp >= ${since} AND ${THREAT_COND}
+        GROUP BY event, auth_method, status ORDER BY count DESC LIMIT 30
+      `),
+      db.execute(sql`
+        SELECT coalesce(geo_country, 'Unknown') as country, count(*)::int as count,
+          count(distinct source_ip)::int as unique_ips
+        FROM security_event
+        WHERE organization_id = ${orgId} AND timestamp >= ${since} AND ${THREAT_COND} AND source_ip IS NOT NULL
+        GROUP BY geo_country ORDER BY count DESC LIMIT 30
+      `),
+      hours <= 48
+        ? db.execute(sql`
+            SELECT to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD"T"HH24:00') as bucket,
+              count(*) filter (where ${THREAT_COND})::int as threats, count(*)::int as total
+            FROM security_event WHERE organization_id = ${orgId} AND timestamp >= ${since}
+            GROUP BY 1 ORDER BY 1
+          `)
+        : db.execute(sql`
+            SELECT to_char(date_trunc('day', timestamp), 'YYYY-MM-DD') as bucket,
+              count(*) filter (where ${THREAT_COND})::int as threats, count(*)::int as total
+            FROM security_event WHERE organization_id = ${orgId} AND timestamp >= ${since}
+            GROUP BY 1 ORDER BY 1
+          `),
+      db.select({
+        id: securityEvent.id, event: securityEvent.event, status: securityEvent.status,
+        authMethod: securityEvent.authMethod, sourceIp: securityEvent.sourceIp,
+        host: securityEvent.host, user: securityEvent.user, service: securityEvent.service,
+        geoCountry: securityEvent.geoCountry, riskScore: securityEvent.riskScore,
         timestamp: securityEvent.timestamp,
-      })
-      .from(securityEvent)
-      .where(and(
-        orgCond,
-        timeCond,
-        sql`(${securityEvent.status} = 'failed' OR ${securityEvent.authMethod} = 'invalid_user' OR ${securityEvent.event} = 'ssh_attempt' OR ${securityEvent.status} = 'suspicious')`,
-      ))
-      .orderBy(desc(securityEvent.timestamp))
-      .limit(20),
+      }).from(securityEvent)
+        .where(and(orgCond, timeCond,
+          sql`(${securityEvent.status} = 'failed' OR ${securityEvent.authMethod} = 'invalid_user' OR ${securityEvent.event} = 'ssh_attempt' OR ${securityEvent.status} = 'suspicious')`,
+        ))
+        .orderBy(desc(securityEvent.timestamp)).limit(20),
+      db.execute(sql`
+        SELECT coalesce(host, 'unknown') as host, coalesce("user", 'unknown') as "user", count(*)::int as count
+        FROM security_event WHERE organization_id = ${orgId} AND timestamp >= ${since} AND ${THREAT_COND}
+        GROUP BY host, "user" ORDER BY count DESC LIMIT 20
+      `),
+    ]);
 
-    // 7. Most targeted hosts/users
-    db.execute<{ host: string; user: string; count: number }>(sql`
-      SELECT
-        coalesce(host, 'unknown') as host,
-        coalesce("user", 'unknown') as "user",
-        count(*)::int as count
-      FROM security_event
-      WHERE organization_id = ${orgId} AND timestamp >= ${since} AND ${THREAT_COND}
-      GROUP BY host, "user"
-      ORDER BY count DESC
-      LIMIT 20
-    `),
-  ]);
-
-  // Map event patterns to MITRE ATT&CK-like techniques
   const techniques = (techniqueRows as unknown as Record<string, unknown>[]).map((r) => {
-    const ev = r.event as string;
-    const am = r.auth_method as string;
-    const st = r.status as string;
-    return {
-      event: ev,
-      authMethod: am,
-      status: st,
-      count: r.count as number,
-      ...mapTechnique(ev, am, st),
-    };
+    const ev = r.event as string, am = r.auth_method as string, st = r.status as string;
+    return { event: ev, authMethod: am, status: st, count: r.count as number, ...mapTechnique(ev, am, st) };
   });
 
-  const summary = ((summaryRows as unknown as Record<string, unknown>[]))[0] ?? { total: 0, threats: 0, unique_ips: 0, unique_countries: 0 };
-
-  return NextResponse.json({
-    summary,
+  return {
+    summary: (summaryRows as unknown as Record<string, unknown>[])[0] ?? { total: 0, threats: 0, unique_ips: 0, unique_countries: 0 },
     iocs: (iocRows as unknown as Record<string, unknown>[]).map((r) => ({
-      ip: r.source_ip,
-      count: r.count,
-      threats: r.threats,
-      countries: r.countries ?? "Unknown",
-      hosts: r.hosts,
-      users: r.users,
-      firstSeen: r.first_seen,
-      lastSeen: r.last_seen,
-      maxRisk: r.max_risk,
-      authMethods: r.auth_methods ?? "",
-      events: r.events ?? "",
+      ip: r.source_ip, count: r.count, threats: r.threats,
+      countries: r.countries ?? "Unknown", hosts: r.hosts, users: r.users,
+      firstSeen: r.first_seen, lastSeen: r.last_seen, maxRisk: r.max_risk,
+      authMethods: r.auth_methods ?? "", events: r.events ?? "",
     })),
     techniques,
     geography: (countryRows as unknown as Record<string, unknown>[]).map((r) => ({
-      country: r.country,
-      count: r.count,
-      uniqueIps: r.unique_ips,
+      country: r.country, count: r.count, uniqueIps: r.unique_ips,
     })),
     timeline: (timelineRows as unknown as Record<string, unknown>[]).map((r) => ({
-      bucket: r.bucket,
-      threats: r.threats,
-      total: r.total,
+      bucket: r.bucket, threats: r.threats, total: r.total,
     })),
     recentThreats: (recentThreats as unknown as Record<string, unknown>[]).map((r) => ({
-      id: r.id,
-      event: r.event,
-      status: r.status,
-      authMethod: r.authMethod,
-      sourceIp: r.sourceIp,
-      host: r.host,
-      user: r.user,
-      service: r.service,
-      geoCountry: r.geoCountry,
-      riskScore: r.riskScore,
-      timestamp: r.timestamp,
+      id: r.id, event: r.event, status: r.status, authMethod: r.authMethod,
+      sourceIp: r.sourceIp, host: r.host, user: r.user, service: r.service,
+      geoCountry: r.geoCountry, riskScore: r.riskScore, timestamp: r.timestamp,
     })),
     targets: (targetRows as unknown as Record<string, unknown>[]).map((r) => ({
-      host: r.host,
-      user: r.user,
-      count: r.count,
+      host: r.host, user: r.user, count: r.count,
     })),
     hours,
-  });
+  };
 }
 
-/** Map event patterns to MITRE ATT&CK-like technique names */
 function mapTechnique(event: string, authMethod: string | null, status: string | null) {
-  const e = event?.toLowerCase() ?? "";
-  const a = authMethod?.toLowerCase() ?? "";
-  const s = status?.toLowerCase() ?? "";
-
+  const e = event?.toLowerCase() ?? "", a = authMethod?.toLowerCase() ?? "", s = status?.toLowerCase() ?? "";
   if (a === "invalid_user" || (e.includes("ssh") && s === "failed"))
     return { technique: "T1110 — Brute Force", tactic: "Credential Access", severity: "high" as const };
   if (e === "ssh_attempt" && a === "publickey")
