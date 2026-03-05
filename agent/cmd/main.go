@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/sombochea/secops/agent/internal/config"
+	"github.com/sombochea/secops/agent/internal/conntrack"
 	"github.com/sombochea/secops/agent/internal/parser"
 	"github.com/sombochea/secops/agent/internal/sender"
 	"github.com/sombochea/secops/agent/internal/tailer"
@@ -50,6 +51,48 @@ func main() {
 	done := make(chan struct{})
 	lines := make(chan taggedLine, 1000)
 
+	// --- Connection tracking ---
+	var tracker *conntrack.Tracker
+	// urgentCh receives suspicious-connection events that must be flushed immediately.
+	// normalConnCh receives routine connection-established events (batched normally).
+	urgentCh := make(chan *parser.Event, 200)
+	normalConnCh := make(chan *parser.Event, 1000)
+
+	if cfg.ConnectionTracking.Enabled {
+		tracker = conntrack.New(cfg.Hostname, conntrack.Config{
+			IntervalSec:         cfg.ConnectionTracking.IntervalSec,
+			WatchPorts:          cfg.ConnectionTracking.WatchPorts,
+			SuspiciousThreshold: cfg.ConnectionTracking.SuspiciousThreshold,
+		})
+		go tracker.Run(done, normalConnCh, urgentCh)
+
+		// Forward normal connection events through the standard batch sender.
+		go func() {
+			for {
+				select {
+				case ev := <-normalConnCh:
+					s.Send(ev)
+				case <-done:
+					return
+				}
+			}
+		}()
+
+		// Flush suspicious-connection events immediately.
+		go func() {
+			for {
+				select {
+				case ev := <-urgentCh:
+					log.Printf("[conntrack] urgent: suspicious_connection from %s (score=%s)",
+						ev.SourceIP, ev.Metadata["suspicious_score"])
+					s.SendUrgent(ev)
+				case <-done:
+					return
+				}
+			}
+		}()
+	}
+
 	for _, src := range cfg.Sources {
 		var csvHeaders []string
 		if src.Format == "csv" {
@@ -83,6 +126,15 @@ func main() {
 			}
 			for k, v := range tl.src.Tags {
 				ev.Metadata[k] = v
+			}
+			// Update suspicious-IP registry and decide delivery priority.
+			if tracker != nil {
+				tracker.ObserveEvent(ev)
+				if tracker.IsSuspicious(ev.SourceIP) {
+					// Source already flagged as suspicious — flush right away.
+					s.SendUrgent(ev)
+					continue
+				}
 			}
 			s.Send(ev)
 		}

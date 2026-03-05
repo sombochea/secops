@@ -18,6 +18,26 @@ flush_sec: 5     # flush interval in seconds
 auto_update: true
 # update_repo: "sombochea/secops"  # default repo to check
 
+# ---------------------------------------------------------------------------
+# Connection tracking
+# ---------------------------------------------------------------------------
+# Periodically snapshots active TCP connections (via `ss` on Linux or
+# `netstat` on macOS/BSD) and emits "connection_established" events to the
+# SOC dashboard.  When a remote IP has already triggered failed-auth or other
+# bad-status events beyond 'suspicious_threshold', subsequent connections from
+# that IP are emitted as "suspicious_connection" and delivered immediately
+# (urgent flush) instead of waiting for the next batch interval.
+connection_tracking:
+  enabled: true
+  # How often to snapshot active connections (seconds). Default: 30.
+  interval_sec: 30
+  # Only emit events for connections whose local port is in this list.
+  # Remove or leave empty to track ALL ports.
+  watch_ports: [22, 80, 443, 3306, 5432, 6379, 8080, 8443, 27017]
+  # Minimum accumulated bad-event count (failed SSH, blocked, etc.) for a
+  # source IP to be treated as suspicious. Default: 3.
+  suspicious_threshold: 3
+
 # Log sources to monitor
 sources:
   # --- Syslog (SSH / PAM auth logs) ---

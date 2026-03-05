@@ -44,6 +44,16 @@ func (s *Sender) Send(ev *parser.Event) {
 	}
 }
 
+// SendUrgent adds ev to the buffer and immediately flushes the entire buffer.
+// Use this for suspicious/high-priority events that must not wait for the
+// normal batch interval.
+func (s *Sender) SendUrgent(ev *parser.Event) {
+	s.mu.Lock()
+	s.buf = append(s.buf, *ev)
+	s.mu.Unlock()
+	s.Flush()
+}
+
 func (s *Sender) Start() {
 	ticker := time.NewTicker(time.Duration(s.flushSec) * time.Second)
 	go func() {

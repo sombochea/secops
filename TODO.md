@@ -82,6 +82,7 @@
 - Add tagging to source IPs and users to allow analysts to categorize and prioritize events based on the associated tags, helping to streamline the investigation process and focus on the most critical threats.
 - In CyberKiller view mode, add the ability to visualize the relationships between different events, sources, and targets in a more intuitive and interactive way, such as using a graph or network visualization to show how different events are connected and identify potential attack paths more easily.
 - In CyberKiller "Attackers" should count unique source IPs, and "Targets" should count unique destination IPs or hosts, providing a clearer picture of the scope and scale of potential attacks and helping analysts to prioritize their investigations more effectively.
+- In SecOps Agent, add connection tracking (connection state, duration, bytes transferred) to provide more context about the security events being collected and help analysts to better understand the nature of potential threats and attack patterns. And send to the SOC dashboard for visualization and analysis, allowing analysts to gain deeper insights into the behavior of potential attackers and identify patterns that may indicate ongoing attacks or breaches.
 
 ### Key Features for the SOC Dashboard
 
